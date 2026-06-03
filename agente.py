@@ -1,182 +1,319 @@
 import os
-import json
 import smtplib
 import requests
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import google.generativeai as genai
+
 # ============================================================
-# CONFIGURACIÓN — Rellena estos valores con tus credenciales
+# CONFIGURACIÓN
 # ============================================================
-GEMINI_API_KEY   = "AQ.Ab8RN6LDNf7FuVAPiHhJDhw4O-sUn44JX0_yb_RJvLsOKPWZZQ"
-NEWS_API_KEY     = "10ffdd542a66415593d743c5a8db0a7d"
-GMAIL_USER       = "joank.9200@gmail.com"
-GMAIL_APP_PASS   = "iuadabbrtcichqow"   # Contraseña de aplicación Gmail
-EMAIL_DESTINO    = "joank.9200@gmail.com"   # Donde quieres recibir el informe
+GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")
+NEWS_API_KEY    = os.environ.get("NEWS_API_KEY", "")
+GMAIL_USER      = os.environ.get("GMAIL_USER", "")
+GMAIL_APP_PASS  = os.environ.get("GMAIL_APP_PASS", "")
+EMAIL_DESTINO   = os.environ.get("EMAIL_DESTINO", "")
 # ============================================================
-# Lista de empresas a monitorizar
-EMPRESAS = {
-    # --- Cartera ---
-    "MSFT":  "Microsoft",
-    "META":  "Meta",
-    "AMZN":  "Amazon",
-    "GOOGL": "Alphabet Google",
-    "CSU":   "Constellation Software",
-    "V":     "Visa",
-    "MA":    "Mastercard",
-    "SPGI":  "S&P Global",
-    "MCO":   "Moody's",
-    "BTC":   "Bitcoin",
-    "MELI":  "MercadoLibre",
-    "BKNG":  "Booking Holdings",
-    "CPRT":  "Copart",
-    "DNP":   "Dino Polska",
-    "AIR":   "Airbus",
-    "7974":  "Nintendo",
-    "KRB":   "Kraken Robotics",
-    "TMDX":  "TransMedics Group",
-    # --- Watchlist ---
-    "WCN":   "Waste Connections",
-    "MCD":   "McDonald's",
-    "AXP":   "American Express",
-    "ASTS":  "AST SpaceMobile",
-    "NVDA":  "Nvidia",
-    "BRK.B": "Berkshire Hathaway",
+
+EMPRESAS_USA = {
+    "MSFT": "Microsoft", "META": "Meta", "AMZN": "Amazon", "GOOGL": "Alphabet",
+    "V": "Visa", "MA": "Mastercard", "SPGI": "S&P Global", "MCO": "Moody's",
+    "MELI": "MercadoLibre", "BKNG": "Booking Holdings", "CPRT": "Copart",
+    "TMDX": "TransMedics", "WCN": "Waste Connections", "MCD": "McDonald's",
+    "AXP": "American Express", "ASTS": "AST SpaceMobile", "NVDA": "Nvidia",
 }
 
-TICKERS_SEC = [
-    "MSFT","META","AMZN","GOOGL","V","MA","SPGI","MCO",
-    "MELI","BKNG","CPRT","TMDX","WCN","MCD","AXP","ASTS","NVDA"
-]
+EMPRESAS_INTL = {
+    "CSU.TO":  ("Constellation Software", "CA"),
+    "KRB.V":   ("Kraken Robotics", "CA"),
+    "AIR.PA":  ("Airbus", "FR"),
+    "7974.T":  ("Nintendo", "JP"),
+    "DNP.WA":  ("Dino Polska", "PL"),
+}
+
+CRYPTO = {"BTC": "Bitcoin"}
+
+TODAS_EMPRESAS = (
+    list(EMPRESAS_USA.values()) +
+    [v[0] for v in EMPRESAS_INTL.values()] +
+    list(CRYPTO.values())
+)
+
+HEADERS_SEC = {"User-Agent": "agente-bolsa investigador@gmail.com"}
 
 
-def get_insider_transactions():
-    """Obtiene transacciones de insiders de la SEC (EDGAR) de los últimos 2 días."""
-    resultados = []
-    headers = {"User-Agent": "agente-bolsa joancarlesconsultor@gmail.com"}
-    hoy = datetime.now()
-    hace_dos_dias = hoy - timedelta(days=2)
-
-    for ticker in TICKERS_SEC:
+# ─────────────────────────────────────────────
+# 1. MACRO
+# ─────────────────────────────────────────────
+def get_macro_data():
+    """Obtiene datos macro vía NewsAPI."""
+    queries = [
+        "Federal Reserve interest rates inflation 2026",
+        "ECB European Central Bank rates economy",
+        "geopolitical risk trade war tariffs 2026",
+        "US dollar DXY oil gold commodities",
+        "recession GDP growth outlook 2026",
+    ]
+    noticias = []
+    ayer = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    for q in queries:
         try:
-            # Buscar CIK por ticker
-            url_cik = f"https://efts.sec.gov/LATEST/search-index?q=%22{ticker}%22&dateRange=custom&startdt={hace_dos_dias.strftime('%Y-%m-%d')}&enddt={hoy.strftime('%Y-%m-%d')}&forms=4"
-            resp = requests.get(url_cik, headers=headers, timeout=10)
-            if resp.status_code != 200:
-                continue
-            data = resp.json()
-            hits = data.get("hits", {}).get("hits", [])
-            for hit in hits[:3]:  # máximo 3 por empresa
-                src = hit.get("_source", {})
-                nombre = EMPRESAS.get(ticker, ticker)
-                resultados.append({
-                    "empresa": nombre,
-                    "ticker": ticker,
-                    "fecha": src.get("file_date", ""),
-                    "descripcion": src.get("display_names", ""),
-                    "url": f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company={ticker}&type=4&dateb=&owner=include&count=10"
-                })
+            url = (
+                f"https://newsapi.org/v2/everything?q={requests.utils.quote(q)}"
+                f"&from={ayer}&language=en&sortBy=relevancy&pageSize=3&apiKey={NEWS_API_KEY}"
+            )
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                for a in r.json().get("articles", []):
+                    noticias.append(f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}")
         except Exception:
             continue
+    return noticias
 
+
+# ─────────────────────────────────────────────
+# 2. NOTICIAS POR EMPRESA
+# ─────────────────────────────────────────────
+def get_noticias_empresas():
+    """Busca noticias para cada empresa individualmente."""
+    resultado = {}
+    ayer = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    todas = {**{t: n for t, n in EMPRESAS_USA.items()},
+             **{t: v[0] for t, v in EMPRESAS_INTL.items()},
+             **CRYPTO}
+
+    for ticker, nombre in todas.items():
+        try:
+            q = requests.utils.quote(f'"{nombre}"')
+            url = (
+                f"https://newsapi.org/v2/everything?q={q}"
+                f"&from={ayer}&language=en&sortBy=relevancy&pageSize=4&apiKey={NEWS_API_KEY}"
+            )
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                arts = r.json().get("articles", [])
+                if arts:
+                    resultado[nombre] = [
+                        f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}"
+                        for a in arts
+                    ]
+                else:
+                    resultado[nombre] = []
+        except Exception:
+            resultado[nombre] = []
+    return resultado
+
+
+# ─────────────────────────────────────────────
+# 3. INSIDERS
+# ─────────────────────────────────────────────
+def get_insiders_usa():
+    """Form 4 de la SEC para empresas USA."""
+    resultados = []
+    hoy = datetime.now()
+    hace_3_dias = (hoy - timedelta(days=3)).strftime("%Y-%m-%d")
+    hoy_str = hoy.strftime("%Y-%m-%d")
+
+    for ticker in EMPRESAS_USA.keys():
+        try:
+            url = (
+                f"https://efts.sec.gov/LATEST/search-index?q=%22{ticker}%22"
+                f"&dateRange=custom&startdt={hace_3_dias}&enddt={hoy_str}&forms=4"
+            )
+            r = requests.get(url, headers=HEADERS_SEC, timeout=10)
+            if r.status_code != 200:
+                continue
+            hits = r.json().get("hits", {}).get("hits", [])
+            for h in hits[:3]:
+                src = h.get("_source", {})
+                resultados.append(
+                    f"{EMPRESAS_USA[ticker]} ({ticker}) | "
+                    f"Fecha: {src.get('file_date','')} | "
+                    f"Declarante: {src.get('display_names','')} | "
+                    f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=4&dateb=&owner=include&count=5"
+                )
+        except Exception:
+            continue
     return resultados
 
 
-def get_noticias():
-    """Obtiene noticias recientes de todas las empresas monitorizadas."""
-    nombres = list(EMPRESAS.values())
-    # Agrupamos en queries para no exceder límites
-    queries = [
-        "Microsoft OR Meta OR Amazon OR Alphabet OR Google",
-        "Constellation Software OR Visa OR Mastercard OR \"S&P Global\" OR Moody's",
-        "MercadoLibre OR Booking Holdings OR Copart OR Airbus OR Nintendo",
-        "Nvidia OR Berkshire Hathaway OR \"American Express\" OR McDonald's OR \"Waste Connections\"",
-        "Bitcoin OR \"AST SpaceMobile\" OR TransMedics OR \"Kraken Robotics\" OR \"Dino Polska\""
-    ]
+def get_insiders_canada():
+    """SEDI canadiense para CSU y Kraken vía scraping básico."""
+    resultados = []
+    empresas = {"Constellation Software": "CSU", "Kraken Robotics": "KRB"}
+    for nombre, ticker in empresas.items():
+        try:
+            url = f"https://www.sedi.ca/sedi/SVTFileViewer?event=DISPLAY&lang=EN&search=BASICFILEISSUER&issuerId=&issuerName={requests.utils.quote(nombre)}&transactionFromDate=&transactionToDate=&insider=&filingType=4"
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200 and nombre.lower() in r.text.lower():
+                resultados.append(
+                    f"{nombre} ({ticker}) | Consultar SEDI: https://www.sedi.ca"
+                )
+        except Exception:
+            continue
+    return resultados
 
-    noticias = []
-    ayer = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+def get_insiders_europa_japon():
+    """Noticias de insiders para empresas europeas y japonesas."""
+    resultados = []
+    empresas_buscar = [
+        ("Airbus", "AIR.PA", "Airbus insider transaction AMF"),
+        ("Nintendo", "7974.T", "Nintendo insider transaction TDnet"),
+        ("Dino Polska", "DNP.WA", "Dino Polska insider transaction ESPI"),
+    ]
+    ayer = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+    for nombre, ticker, query in empresas_buscar:
+        try:
+            url = (
+                f"https://newsapi.org/v2/everything?q={requests.utils.quote(query)}"
+                f"&from={ayer}&language=en&sortBy=relevancy&pageSize=2&apiKey={NEWS_API_KEY}"
+            )
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                arts = r.json().get("articles", [])
+                for a in arts:
+                    resultados.append(
+                        f"{nombre} ({ticker}) | [{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('url','')}"
+                    )
+        except Exception:
+            continue
+    return resultados
+
+
+def get_todos_insiders():
+    insiders = []
+    insiders += get_insiders_usa()
+    insiders += get_insiders_canada()
+    insiders += get_insiders_europa_japon()
+    return insiders
+
+
+# ─────────────────────────────────────────────
+# 5. CALENDARIO DE RESULTADOS
+# ─────────────────────────────────────────────
+def get_calendario_resultados():
+    """Busca próximas presentaciones de resultados vía NewsAPI."""
+    hoy = datetime.now()
+    en_dos_semanas = (hoy + timedelta(days=14)).strftime("%Y-%m-%d")
+    hoy_str = hoy.strftime("%Y-%m-%d")
+
+    nombres_busqueda = " OR ".join([
+        f'"{n}"' for n in [
+            "Microsoft", "Meta", "Amazon", "Alphabet", "Visa", "Mastercard",
+            "MercadoLibre", "Nvidia", "Booking", "Copart", "TransMedics",
+            "Nintendo", "Airbus", "Constellation Software", "Dino Polska",
+            "Waste Connections", "McDonald's", "American Express", "Berkshire"
+        ]
+    ])
+
+    resultados = []
+    queries = [
+        "earnings date results Q2 2026 " + "Microsoft OR Meta OR Amazon OR Alphabet OR Nvidia OR Visa OR Mastercard",
+        "earnings date results Q2 2026 " + "MercadoLibre OR Booking OR Copart OR TransMedics OR \"Waste Connections\" OR McDonald's",
+        "earnings results 2026 Nintendo OR Airbus OR \"Constellation Software\" OR \"Dino Polska\" OR \"Kraken Robotics\"",
+        "earnings calendar Q2 2026 \"American Express\" OR Berkshire OR \"AST SpaceMobile\" OR \"S&P Global\" OR Moody's",
+    ]
 
     for q in queries:
         try:
             url = (
-                f"https://newsapi.org/v2/everything"
-                f"?q={requests.utils.quote(q)}"
-                f"&from={ayer}"
-                f"&language=en"
-                f"&sortBy=relevancy"
-                f"&pageSize=5"
-                f"&apiKey={NEWS_API_KEY}"
+                f"https://newsapi.org/v2/everything?q={requests.utils.quote(q)}"
+                f"&from={hoy_str}&language=en&sortBy=relevancy&pageSize=4&apiKey={NEWS_API_KEY}"
             )
-            resp = requests.get(url, timeout=10)
-            if resp.status_code != 200:
-                continue
-            articles = resp.json().get("articles", [])
-            for a in articles:
-                noticias.append({
-                    "titulo": a.get("title", ""),
-                    "fuente": a.get("source", {}).get("name", ""),
-                    "descripcion": a.get("description", ""),
-                    "url": a.get("url", ""),
-                    "fecha": a.get("publishedAt", "")
-                })
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                for a in r.json().get("articles", []):
+                    resultados.append(
+                        f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')} ({a.get('url','')})"
+                    )
         except Exception:
             continue
+    return resultados
 
-    return noticias
 
-
-def generar_informe_con_gemini(noticias, insiders):
-    """Usa Gemini para generar el informe en español."""
+# ─────────────────────────────────────────────
+# GEMINI — GENERAR INFORME
+# ─────────────────────────────────────────────
+def generar_informe(macro, noticias_empresas, insiders, calendario):
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel("gemini-2.5-flash")
 
-    fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+    fecha = datetime.now().strftime("%d/%m/%Y")
 
-    noticias_texto = "\n".join([
-        f"- [{n['fuente']}] {n['titulo']}: {n['descripcion']} ({n['url']})"
-        for n in noticias[:40]
-    ])
+    # Formatear noticias por empresa
+    noticias_texto = ""
+    for empresa, arts in noticias_empresas.items():
+        if arts:
+            noticias_texto += f"\n### {empresa}\n"
+            for a in arts:
+                noticias_texto += f"  - {a}\n"
+        else:
+            noticias_texto += f"\n### {empresa}\n  - Sin noticias\n"
 
-    insiders_texto = "\n".join([
-        f"- {i['empresa']} ({i['ticker']}): {i['descripcion']} — Fecha: {i['fecha']} — {i['url']}"
-        for i in insiders[:20]
-    ]) if insiders else "No se han detectado transacciones de insiders relevantes en las últimas 48h."
+    macro_texto = "\n".join(macro[:15]) if macro else "Sin datos macro disponibles."
+    insiders_texto = "\n".join(insiders[:25]) if insiders else "Sin transacciones de insiders detectadas."
+    calendario_texto = "\n".join(calendario[:20]) if calendario else "Sin información de calendario de resultados."
 
     prompt = f"""
-Eres un analista de inversiones experto. Hoy es {fecha_hoy}.
-Tu tarea es generar un informe diario de seguimiento de cartera en ESPAÑOL para un inversor particular.
+Eres un analista de inversiones senior. Hoy es {fecha}.
+Genera un informe diario de seguimiento de cartera en ESPAÑOL, estructurado, conciso y orientado a la toma de decisiones.
 
 El inversor tiene en cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
 S&P Global, Moody's, Bitcoin, MercadoLibre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
 Kraken Robotics y TransMedics.
-
 También monitoriza: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia y Berkshire Hathaway.
 
-Con los datos que tienes a continuación, genera un informe estructurado con estas secciones:
+Genera el informe con EXACTAMENTE estas 5 secciones:
 
-1. **RESUMEN EJECUTIVO** (3-4 líneas con lo más importante del día)
-2. **NOTICIAS RELEVANTES POR EMPRESA** (solo las que tengan noticias reales, omite las que no)
-3. **TRANSACCIONES DE INSIDERS** (compras/ventas relevantes detectadas)
-4. **SEÑALES A VIGILAR** (eventos próximos, riesgos o catalizadores que el inversor debe tener en cuenta)
+---
+## 1. RESUMEN MACRO
+Tipos de interés, inflación, geopolítica, divisas, materias primas. Qué implica para la cartera.
+Usa los datos proporcionados. Sé directo y analítico.
 
-Sé conciso, directo y orientado a la toma de decisiones. Omite relleno.
-Si una noticia no es relevante para un inversor a largo plazo, no la incluyas.
+## 2. NOTICIAS POR EMPRESA
+Lista TODAS las empresas de cartera y watchlist. 
+- Si hay noticias: resúmelas con criterio inversor, destaca lo relevante
+- Si no hay noticias: escribe simplemente "Sin noticias relevantes"
+No omitas ninguna empresa.
 
---- NOTICIAS ---
+## 3. TRANSACCIONES DE INSIDERS
+Compras y ventas detectadas. Si hay Form 4 de la SEC u otras fuentes, analiza si es compra o venta y el importe si está disponible.
+Si no hay datos: "Sin transacciones detectadas en las últimas 72h"
+
+## 4. SEÑALES A VIGILAR
+Riesgos, catalizadores próximos, niveles técnicos o fundamentales a tener en cuenta esta semana.
+
+## 5. CALENDARIO DE RESULTADOS
+Presentaciones de resultados de la semana actual y la próxima para las empresas monitorizadas.
+Indica fecha si está disponible. Si no hay datos concretos, indica qué empresas reportan aproximadamente en este período.
+---
+
+Sé directo. Sin relleno. Sin frases vacías.
+
+=== DATOS MACRO ===
+{macro_texto}
+
+=== NOTICIAS POR EMPRESA ===
 {noticias_texto}
 
---- TRANSACCIONES INSIDERS (SEC Form 4) ---
+=== INSIDERS ===
 {insiders_texto}
+
+=== CALENDARIO RESULTADOS ===
+{calendario_texto}
 """
 
     response = model.generate_content(prompt)
     return response.text
 
 
+# ─────────────────────────────────────────────
+# EMAIL
+# ─────────────────────────────────────────────
 def enviar_email(informe):
-    """Envía el informe por email."""
     fecha = datetime.now().strftime("%d/%m/%Y")
     asunto = f"📊 Informe Diario de Cartera — {fecha}"
 
@@ -185,20 +322,17 @@ def enviar_email(informe):
     msg["From"]    = GMAIL_USER
     msg["To"]      = EMAIL_DESTINO
 
-    # Versión texto plano
     parte_texto = MIMEText(informe, "plain", "utf-8")
 
-    # Versión HTML básica para mejor legibilidad
-    html_informe = informe.replace("\n", "<br>").replace("**", "")
+    html_body = informe.replace("## ", "<h2>").replace("\n---\n", "<hr>").replace("\n", "<br>")
     html = f"""
-    <html><body style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 20px;">
-    <h2 style="color: #1a1a2e;">📊 Informe Diario de Cartera — {fecha}</h2>
+    <html><body style="font-family: Arial, sans-serif; max-width: 860px; margin: auto; padding: 20px; color: #222;">
+    <h1 style="color:#1a1a2e; border-bottom: 2px solid #1a1a2e; padding-bottom:8px;">
+        📊 Informe Diario de Cartera — {fecha}
+    </h1>
+    <div style="line-height:1.8;">{html_body}</div>
     <hr>
-    <div style="line-height: 1.7; color: #333;">
-    {html_informe}
-    </div>
-    <hr>
-    <p style="color: #999; font-size: 12px;">Generado automáticamente por tu Agente de Bolsa</p>
+    <p style="color:#aaa; font-size:11px;">Generado automáticamente · Agente de Bolsa</p>
     </body></html>
     """
     parte_html = MIMEText(html, "html", "utf-8")
@@ -206,31 +340,43 @@ def enviar_email(informe):
     msg.attach(parte_texto)
     msg.attach(parte_html)
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as servidor:
-        servidor.login(GMAIL_USER, GMAIL_APP_PASS)
-        servidor.sendmail(GMAIL_USER, EMAIL_DESTINO, msg.as_string())
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+        s.login(GMAIL_USER, GMAIL_APP_PASS)
+        s.sendmail(GMAIL_USER, EMAIL_DESTINO, msg.as_string())
 
     print(f"✅ Informe enviado a {EMAIL_DESTINO}")
 
 
+# ─────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────
 def main():
     print(f"🔍 Iniciando agente — {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
-    print("📰 Obteniendo noticias...")
-    noticias = get_noticias()
-    print(f"   → {len(noticias)} noticias obtenidas")
+    print("🌍 Obteniendo datos macro...")
+    macro = get_macro_data()
+    print(f"   → {len(macro)} items macro")
 
-    print("📋 Consultando insiders en SEC...")
-    insiders = get_insider_transactions()
-    print(f"   → {len(insiders)} transacciones encontradas")
+    print("📰 Obteniendo noticias por empresa...")
+    noticias = get_noticias_empresas()
+    con_noticias = sum(1 for v in noticias.values() if v)
+    print(f"   → {con_noticias}/{len(noticias)} empresas con noticias")
+
+    print("📋 Consultando insiders...")
+    insiders = get_todos_insiders()
+    print(f"   → {len(insiders)} registros encontrados")
+
+    print("📅 Buscando calendario de resultados...")
+    calendario = get_calendario_resultados()
+    print(f"   → {len(calendario)} eventos encontrados")
 
     print("🤖 Generando informe con Gemini...")
-    informe = generar_informe_con_gemini(noticias, insiders)
+    informe = generar_informe(macro, noticias, insiders, calendario)
 
     print("📧 Enviando email...")
     enviar_email(informe)
 
-    print("✅ Proceso completado.")
+    print("✅ Completado.")
 
 
 if __name__ == "__main__":
