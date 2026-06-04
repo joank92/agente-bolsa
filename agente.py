@@ -27,7 +27,7 @@ EMAIL_DESTINO   = os.environ.get("EMAIL_DESTINO", "")
 EMPRESAS_USA = {
     "MSFT": "Microsoft", "META": "Meta", "AMZN": "Amazon", "GOOGL": "Alphabet",
     "V": "Visa", "MA": "Mastercard", "SPGI": "S&P Global", "MCO": "Moody's",
-    "MELI": "MercadoLibre", "BKNG": "Booking Holdings", "CPRT": "Copart",
+    "MELI": "Mercado Libre", "BKNG": "Booking Holdings", "CPRT": "Copart",
     "TMDX": "TransMedics",
 }
 EMPRESAS_INTL = {
@@ -51,7 +51,7 @@ WATCHLIST_USUARIO = {
     "V":      "Visa",
     "SPGI":   "S&P Global",
     "MCO":    "Moody's",
-    "MELI":   "MercadoLibre",
+    "MELI":   "Mercado Libre",
     "BKNG":   "Booking Holdings",
     "CPRT":   "Copart",
     "DNP.WA": "Dino Polska",
@@ -227,12 +227,12 @@ def descargar_todos_los_datos(tickers_cartera, tickers_watchlist):
 
 
 # ═════════════════════════════════════════════
-# 3. CAMBIOS DE ANALISTAS (30 días)
+# 3. CAMBIOS DE ANALISTAS (15 días)
 # ═════════════════════════════════════════════
 def procesar_cambios_analistas(datos_descargados):
     cambios_por_ticker = {}
     hoy = datetime.now().date()
-    hace_30 = hoy - timedelta(days=30)
+    hace_15 = hoy - timedelta(days=15)
 
     for ticker, d in datos_descargados.items():
         ud = d.get("upgrades")
@@ -245,7 +245,7 @@ def procesar_cambios_analistas(datos_descargados):
                 fecha_date = idx.date() if hasattr(idx, 'date') else datetime.strptime(str(idx)[:10], "%Y-%m-%d").date()
             except Exception:
                 continue
-            if fecha_date < hace_30 or fecha_date > hoy:
+            if fecha_date < hace_15 or fecha_date > hoy:
                 continue
             firma     = row.get("Firm", "")
             desde_g   = traducir_grado(row.get("FromGrade", ""))
@@ -278,39 +278,49 @@ def emoji_cambio(accion_raw):
 
 
 def formatear_cambios_para_seccion(cambios_por_ticker, datos_descargados, solo_cartera_tickers=None):
-    """Formato mejorado: incluye flechita + precio objetivo de consenso de la empresa."""
+    """Agrupa los cambios por empresa, todas las recomendaciones de cada empresa juntas."""
     lineas = []
-    # Ordenar por fecha más reciente primero
-    todos_cambios = []
-    for ticker, cambios in cambios_por_ticker.items():
+    # Filtrar tickers que aplican y ordenar empresas alfabéticamente
+    tickers_validos = []
+    for ticker in cambios_por_ticker.keys():
         if solo_cartera_tickers and ticker not in solo_cartera_tickers:
             continue
-        for c in cambios:
-            todos_cambios.append((c, ticker))
-    todos_cambios.sort(key=lambda x: x[0]["fecha"], reverse=True)
+        tickers_validos.append(ticker)
+    # Ordenar empresas por nombre
+    tickers_validos.sort(key=lambda t: cambios_por_ticker[t][0]["nombre"])
 
-    for c, ticker in todos_cambios:
-        flecha = emoji_cambio(c.get("accion_raw", c.get("accion", "")))
-        # Precio objetivo de consenso (de yfinance.info)
+    for ticker in tickers_validos:
+        cambios = cambios_por_ticker[ticker]
+        nombre = cambios[0]["nombre"]
+        # Target consenso de la empresa
         target_consenso = ""
         if ticker in datos_descargados and datos_descargados[ticker].get("info"):
             tgt = datos_descargados[ticker]["info"].get("targetMeanPrice")
             if tgt:
-                target_consenso = f" | Target consenso: {tgt:.2f}"
+                try:
+                    target_consenso = f" — Target consenso: {float(tgt):.2f}"
+                except Exception:
+                    pass
 
-        cambio_txt = ""
-        if c["desde"] and c["hasta"]:
-            cambio_txt = f"{c['desde']} → {c['hasta']}"
-        elif c["hasta"]:
-            cambio_txt = c["hasta"]
+        # Cabecera por empresa
+        lineas.append(f"\n### {nombre} ({ticker}){target_consenso}")
 
-        linea = f"{flecha} **{c['nombre']} ({ticker})** | {c['fecha'].strftime('%d/%m/%Y')} | {c['firma']}"
-        if cambio_txt:
-            linea += f" | {cambio_txt}"
-        linea += target_consenso
-        lineas.append(linea)
+        # Ordenar cambios de la empresa por fecha más reciente primero
+        cambios_ord = sorted(cambios, key=lambda c: c["fecha"], reverse=True)
+        for c in cambios_ord:
+            flecha = emoji_cambio(c.get("accion_raw", c.get("accion", "")))
+            cambio_txt = ""
+            if c["desde"] and c["hasta"]:
+                cambio_txt = f"{c['desde']} → {c['hasta']}"
+            elif c["hasta"]:
+                cambio_txt = c["hasta"]
 
-    return lineas if lineas else ["Sin cambios de analistas en los últimos 30 días."]
+            linea = f"  {flecha} {c['fecha'].strftime('%d/%m/%Y')} | {c['firma']}"
+            if cambio_txt:
+                linea += f" | {cambio_txt}"
+            lineas.append(linea)
+
+    return lineas if lineas else ["Sin cambios de analistas en los últimos 15 días."]
 
 
 # ═════════════════════════════════════════════
@@ -399,7 +409,14 @@ def get_top_oportunidades(datos_cartera, datos_watchlist, cambios_por_ticker, to
     - recommendationMean <= 2.5 (consenso favorable, sin Sells significativos)
     - número mínimo de analistas: 3 para que sea fiable
     """
-    todos = datos_cartera + datos_watchlist
+    # Combinar deduplicando por ticker (cartera tiene prioridad)
+    vistos = set()
+    todos = []
+    for d in datos_cartera + datos_watchlist:
+        if d['ticker'] in vistos:
+            continue
+        vistos.add(d['ticker'])
+        todos.append(d)
 
     elegibles = []
     for d in todos:
@@ -438,8 +455,6 @@ def get_top_oportunidades(datos_cartera, datos_watchlist, cambios_por_ticker, to
 
         linea = f"{i}. **{d['nombre']} ({d['ticker']})** | Precio: {precio:.2f} {moneda} | "
         linea += f"Target: {target:.2f} | Upside: 🟢 {upside:+.1f}%{rec_texto}"
-        if pe_fwd:
-            linea += f" | P/E Fwd: {pe_fwd:.1f}x"
 
         cambios = cambios_por_ticker.get(d['ticker'], [])
         if cambios:
@@ -487,8 +502,9 @@ Cada subtema con su nombre en negrita y análisis concreto. Termina con implicac
 ## 2. SEÑALES A VIGILAR
 Riesgos y catalizadores reales basados en macro y contexto de la cartera. NUNCA "no hay nada".
 
-## 3. CAMBIOS DE ANALISTAS (últimos 30 días)
-Reproduce la lista tal cual. Los grados YA están en español.
+## 3. CAMBIOS DE ANALISTAS (últimos 15 días)
+Reproduce la lista tal cual, manteniendo el agrupamiento por empresa (cada empresa con su cabecera ### y luego sus cambios debajo).
+NO reordenes, NO mezcles empresas. Los grados YA están en español.
 
 ## 4. DATOS FUNDAMENTALES — CARTERA
 Reproduce el bloque tal cual.
@@ -504,7 +520,7 @@ Sé directo. Sin relleno.
 === DATOS MACRO ===
 {macro_texto}
 
-=== CAMBIOS ANALISTAS (30 días) ===
+=== CAMBIOS ANALISTAS (15 días) ===
 {analistas_texto}
 
 === FUNDAMENTALES CARTERA ===
