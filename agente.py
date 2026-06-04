@@ -28,7 +28,7 @@ EMPRESAS_USA = {
     "MSFT": "Microsoft", "META": "Meta", "AMZN": "Amazon", "GOOGL": "Alphabet",
     "V": "Visa", "MA": "Mastercard", "SPGI": "S&P Global", "MCO": "Moody's",
     "MELI": "MercadoLibre", "BKNG": "Booking Holdings", "CPRT": "Copart",
-    "TMDX": "TransMedics", "NVDA": "Nvidia",
+    "TMDX": "TransMedics",
 }
 EMPRESAS_INTL = {
     "CSU.TO":  ("Constellation Software", "CA"),
@@ -382,20 +382,74 @@ WATCHLIST_WIDE_MOAT = {
     "SATLF": "Zozo",
 }
 
-# Añadir las 5 ex-cartera al watchlist
-WATCHLIST_WIDE_MOAT["WCN"]  = "Waste Connections"
-WATCHLIST_WIDE_MOAT["MCD"]  = "McDonald's"
-WATCHLIST_WIDE_MOAT["AXP"]  = "American Express"
-WATCHLIST_WIDE_MOAT["BRK-B"] = "Berkshire Hathaway"
-WATCHLIST_WIDE_MOAT["ASTS"] = "AST SpaceMobile"
+# Sobrescribir WATCHLIST con la lista específica del usuario
+# Punto 5: solo estas empresas (cartera + watchlist seleccionada)
+WATCHLIST_USUARIO = {
+    # — Cartera (replicada para que aparezca también en watchlist) —
+    "MSFT":   "Microsoft",
+    "META":   "Meta",
+    "AMZN":   "Amazon",
+    "GOOGL":  "Alphabet",
+    "CSU.TO": "Constellation Software",
+    "MA":     "Mastercard",
+    "V":      "Visa",
+    "SPGI":   "S&P Global",
+    "MCO":    "Moody's",
+    "MELI":   "MercadoLibre",
+    "BKNG":   "Booking Holdings",
+    "CPRT":   "Copart",
+    "DNP.WA": "Dino Polska",
+    "AIR.PA": "Airbus",
+    "7974.T": "Nintendo",
+    "PNG.V":  "Kraken Robotics",
+    "TMDX":   "TransMedics",
+    # — Watchlist específica —
+    "AXP":    "American Express",
+    "ASTS":   "AST SpaceMobile",
+    "NVDA":   "Nvidia",
+    "MCD":    "McDonald's",
+    "WCN":    "Waste Connections",
+    "ROL":    "Rollins",
+    "MSCI":   "MSCI",
+    "BRK-B":  "Berkshire Hathaway",
+    "TOI.V":  "Topicus.com",
+    "BABA":   "Alibaba",
+    "0700.HK":"Tencent",
+    "TDG":    "TransDigm",
+    "NFLX":   "Netflix",
+    "SAP":    "SAP",
+    "FICO":   "Fair Isaac",
+    "TSM":    "Taiwan Semi",
+    "AMD":    "AMD",
+    "ASML":   "ASML",
+    "LIN":    "Linde",
+    "DPZ":    "Domino's Pizza",
+    "AVGO":   "Broadcom",
+    "AAPL":   "Apple",
+    "ORLY":   "O'Reilly Auto",
+    "AZO":    "AutoZone",
+    "KO":     "Coca-Cola",
+    "PG":     "Procter & Gamble",
+    "JNJ":    "Johnson & Johnson",
+    "CNI":    "Canadian National Rail",
+    "WM":     "Waste Management",
+    "NSRGY":  "Nestlé",
+    "PLD":    "Prologis",
+    "WALMEX.MX":"Walmex",
+    "KNSL":   "Kinsale Capital",
+    "WKL.AS": "Wolters Kluwer",
+    "ACP.WA": "Asseco Poland",
+    "NOW":    "ServiceNow",
+    "YUMC":   "Yum China",
+    "RMS.PA": "Hermès",
+    "UBER":   "Uber",
+}
 
-# Forzar que las 5 ex-cartera puedan aparecer en el punto 6 (top 10)
-# WCN, MCD, AXP, BRK-B son Wide Moat según Morningstar. ASTS NO es wide moat
-# pero se incluye explícitamente por petición del usuario.
-TICKERS_FORZAR_PUNTO_6 = {"WCN", "MCD", "AXP", "BRK-B", "ASTS"}
+# Reemplazar la WATCHLIST (eliminar la lista enorme de Wide Moat)
+WATCHLIST = WATCHLIST_USUARIO
 
-# Set de tickers Wide Moat (para filtrar el punto 6)
-TICKERS_WIDE_MOAT = set(WATCHLIST_WIDE_MOAT.keys()) | TICKERS_FORZAR_PUNTO_6
+# Set de tickers para el punto 6 (todas las del usuario son candidatas)
+TICKERS_WIDE_MOAT = set(WATCHLIST_USUARIO.keys())
 
 # Combinar con la watchlist anterior del usuario (incluir RACE, KKR, etc. que también son wide moat)
 WATCHLIST = WATCHLIST_WIDE_MOAT
@@ -540,13 +594,15 @@ def procesar_cambios_analistas(datos_descargados):
                 continue
             if fecha_date < hace_30 or fecha_date > hoy:
                 continue
-            firma   = row.get("Firm", "")
-            desde_g = traducir_grado(row.get("FromGrade", ""))
-            hasta_g = traducir_grado(row.get("ToGrade", ""))
-            accion  = traducir_accion(row.get("Action", ""))
+            firma     = row.get("Firm", "")
+            desde_g   = traducir_grado(row.get("FromGrade", ""))
+            hasta_g   = traducir_grado(row.get("ToGrade", ""))
+            accion_raw = row.get("Action", "")
+            accion    = traducir_accion(accion_raw)
             cambios.append({
                 "fecha": fecha_date, "firma": firma,
                 "desde": desde_g, "hasta": hasta_g, "accion": accion,
+                "accion_raw": accion_raw,
                 "nombre": nombre, "ticker": ticker
             })
         if cambios:
@@ -554,20 +610,53 @@ def procesar_cambios_analistas(datos_descargados):
     return cambios_por_ticker
 
 
-def formatear_cambios_para_seccion(cambios_por_ticker, solo_cartera_tickers=None):
-    """Si solo_cartera_tickers se pasa, solo formatea esos. Sino, todos."""
+def emoji_cambio(accion_raw):
+    """Devuelve flechita según la acción original."""
+    a = str(accion_raw).lower().strip()
+    if "up" in a or "upgr" in a:
+        return "⬆️"
+    if "down" in a or "downgr" in a:
+        return "⬇️"
+    if "main" in a or "reit" in a:
+        return "➖"
+    if "init" in a:
+        return "🆕"
+    return ""
+
+
+def formatear_cambios_para_seccion(cambios_por_ticker, datos_descargados, solo_cartera_tickers=None):
+    """Formato mejorado: incluye flechita + precio objetivo de consenso de la empresa."""
     lineas = []
+    # Ordenar por fecha más reciente primero
+    todos_cambios = []
     for ticker, cambios in cambios_por_ticker.items():
         if solo_cartera_tickers and ticker not in solo_cartera_tickers:
             continue
         for c in cambios:
-            if c["desde"] and c["hasta"]:
-                linea = f"📊 **{c['nombre']} ({ticker})** | {c['fecha'].strftime('%d/%m/%Y')} | {c['firma']} | {c['accion']}: {c['desde']} → {c['hasta']}"
-            elif c["hasta"]:
-                linea = f"📊 **{c['nombre']} ({ticker})** | {c['fecha'].strftime('%d/%m/%Y')} | {c['firma']} | {c['accion']}: {c['hasta']}"
-            else:
-                linea = f"📊 **{c['nombre']} ({ticker})** | {c['fecha'].strftime('%d/%m/%Y')} | {c['firma']} | {c['accion']}"
-            lineas.append(linea)
+            todos_cambios.append((c, ticker))
+    todos_cambios.sort(key=lambda x: x[0]["fecha"], reverse=True)
+
+    for c, ticker in todos_cambios:
+        flecha = emoji_cambio(c.get("accion_raw", c.get("accion", "")))
+        # Precio objetivo de consenso (de yfinance.info)
+        target_consenso = ""
+        if ticker in datos_descargados and datos_descargados[ticker].get("info"):
+            tgt = datos_descargados[ticker]["info"].get("targetMeanPrice")
+            if tgt:
+                target_consenso = f" | Target consenso: {tgt:.2f}"
+
+        cambio_txt = ""
+        if c["desde"] and c["hasta"]:
+            cambio_txt = f"{c['desde']} → {c['hasta']}"
+        elif c["hasta"]:
+            cambio_txt = c["hasta"]
+
+        linea = f"{flecha} **{c['nombre']} ({ticker})** | {c['fecha'].strftime('%d/%m/%Y')} | {c['firma']}"
+        if cambio_txt:
+            linea += f" | {cambio_txt}"
+        linea += target_consenso
+        lineas.append(linea)
+
     return lineas if lineas else ["Sin cambios de analistas en los últimos 30 días."]
 
 
@@ -593,13 +682,6 @@ def procesar_fundamentales(datos_descargados, tickers_filtro):
             num_analistas = info.get("numberOfAnalystOpinions") or 0
 
             if not precio:
-                continue
-
-            # FILTRO: excluir empresas con valoración excesiva
-            # P/E actual > 40 o P/E Forward > 30 → no mostrar
-            if pe_actual is not None and pe_actual > 40:
-                continue
-            if pe_forward is not None and pe_forward > 30:
                 continue
 
             upside = ((precio_target - precio) / precio * 100) if precio_target else None
@@ -828,7 +910,7 @@ def main():
 
     print("🎯 Procesando cambios de analistas...")
     cambios_dict = procesar_cambios_analistas(datos)
-    cambios_fmt  = formatear_cambios_para_seccion(cambios_dict, solo_cartera_tickers=set(tickers_cartera.keys()))
+    cambios_fmt  = formatear_cambios_para_seccion(cambios_dict, datos, solo_cartera_tickers=set(tickers_cartera.keys()))
     print(f"   → {sum(len(v) for v in cambios_dict.values())} cambios totales")
 
     print("📊 Procesando fundamentales cartera...")
