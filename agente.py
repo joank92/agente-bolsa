@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from bs4 import BeautifulSoup
+import yfinance as yf
 import google.generativeai as genai
 
 # ============================================================
@@ -23,6 +24,7 @@ EMPRESAS_USA = {
     "MELI": "MercadoLibre", "BKNG": "Booking Holdings", "CPRT": "Copart",
     "TMDX": "TransMedics", "WCN": "Waste Connections", "MCD": "McDonald's",
     "AXP": "American Express", "ASTS": "AST SpaceMobile", "NVDA": "Nvidia",
+    "BRK-B": "Berkshire Hathaway",
 }
 
 EMPRESAS_INTL = {
@@ -35,7 +37,6 @@ EMPRESAS_INTL = {
 
 CRYPTO = {"BTC": "Bitcoin"}
 
-HEADERS_SEC = {"User-Agent": "agente-bolsa investigador@gmail.com"}
 HEADERS_WEB = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 
@@ -96,15 +97,10 @@ def get_noticias_empresas():
 
 
 # ─────────────────────────────────────────────
-# 3. INSIDERS — OpenInsider (solo compras reales)
+# 3. INSIDERS — OpenInsider
 # ─────────────────────────────────────────────
 def get_insiders_openinsider():
-    """
-    Scrapea OpenInsider filtrando solo compras reales (tipo P = Purchase).
-    Devuelve empresa, directivo, cargo, cantidad, precio y valor total.
-    """
     resultados = []
-
     for ticker, nombre in EMPRESAS_USA.items():
         try:
             url = (
@@ -117,18 +113,16 @@ def get_insiders_openinsider():
             r = requests.get(url, headers=HEADERS_WEB, timeout=15)
             if r.status_code != 200:
                 continue
-
             soup = BeautifulSoup(r.text, "html.parser")
             tabla = soup.find("table", {"class": "tinytable"})
             if not tabla:
                 continue
-
             for fila in tabla.find_all("tr")[1:]:
                 celdas = fila.find_all("td")
                 if len(celdas) < 12:
                     continue
                 tipo = celdas[6].get_text(strip=True)
-                if tipo != "P":  # Solo compras
+                if tipo != "P":
                     continue
                 fecha    = celdas[1].get_text(strip=True)
                 insider  = celdas[4].get_text(strip=True)
@@ -143,55 +137,106 @@ def get_insiders_openinsider():
                 )
         except Exception:
             continue
-
-    # Canadá — SEDI
-    for ticker, (nombre, pais) in EMPRESAS_INTL.items():
-        if pais != "CA":
-            continue
-        try:
-            url = f"https://www.sedi.ca/sedi/SVTFileViewer?event=DISPLAY&lang=EN&search=BASICFILEISSUER&issuerName={requests.utils.quote(nombre)}&filingType=4"
-            r = requests.get(url, headers=HEADERS_WEB, timeout=10)
-            if r.status_code == 200 and "purchase" in r.text.lower():
-                resultados.append(f"🟢 POSIBLE COMPRA | {nombre} ({ticker}) | Ver SEDI: https://www.sedi.ca")
-        except Exception:
-            continue
-
-    return resultados if resultados else ["Sin compras de insiders detectadas en las últimas 72h."]
+    return resultados if resultados else []
 
 
 # ─────────────────────────────────────────────
-# 5. CALENDARIO DE RESULTADOS
+# 5. EARNINGS PRÓXIMOS 15 DÍAS
 # ─────────────────────────────────────────────
-def get_calendario_resultados():
-    hoy_str = datetime.now().strftime("%Y-%m-%d")
+def get_earnings_proximos():
     resultados = []
-    queries = [
-        "earnings date results Q2 2026 Microsoft OR Meta OR Amazon OR Alphabet OR Nvidia OR Visa OR Mastercard",
-        "earnings date results Q2 2026 MercadoLibre OR Booking OR Copart OR TransMedics OR \"Waste Connections\" OR McDonald's",
-        "earnings results 2026 Nintendo OR Airbus OR \"Constellation Software\" OR \"Dino Polska\" OR \"Kraken Robotics\"",
-        "earnings calendar Q2 2026 \"American Express\" OR Berkshire OR \"AST SpaceMobile\" OR \"S&P Global\" OR Moody's",
-    ]
-    for q in queries:
+    hoy = datetime.now().date()
+    en_15_dias = hoy + timedelta(days=15)
+    todos_tickers = list(EMPRESAS_USA.keys()) + list(EMPRESAS_INTL.keys())
+    for ticker in todos_tickers:
         try:
-            url = (
-                f"https://newsapi.org/v2/everything?q={requests.utils.quote(q)}"
-                f"&from={hoy_str}&language=en&sortBy=relevancy&pageSize=4&apiKey={NEWS_API_KEY}"
-            )
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                for a in r.json().get("articles", []):
-                    resultados.append(
-                        f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')} ({a.get('url','')})"
-                    )
+            stock = yf.Ticker(ticker)
+            cal = stock.calendar
+            if cal is None:
+                continue
+            earnings_date = cal.get("Earnings Date") if isinstance(cal, dict) else None
+            if earnings_date is None:
+                continue
+            if isinstance(earnings_date, list):
+                earnings_date = earnings_date[0] if earnings_date else None
+            if earnings_date is None:
+                continue
+            if hasattr(earnings_date, 'date'):
+                earnings_date = earnings_date.date()
+            if hoy <= earnings_date <= en_15_dias:
+                nombre = EMPRESAS_USA.get(ticker) or (EMPRESAS_INTL.get(ticker, (ticker,))[0])
+                resultados.append(f"📅 {nombre} ({ticker}) — {earnings_date.strftime('%d/%m/%Y')}")
         except Exception:
             continue
     return resultados
 
 
 # ─────────────────────────────────────────────
+# 6. CAMBIOS DE ANALISTAS
+# ─────────────────────────────────────────────
+def get_cambios_analistas():
+    resultados = []
+    ayer = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    todos_nombres = list(EMPRESAS_USA.values()) + [v[0] for v in EMPRESAS_INTL.values()]
+    grupos = [todos_nombres[i:i+5] for i in range(0, len(todos_nombres), 5)]
+    for grupo in grupos:
+        nombres_query = " OR ".join([f'"{n}"' for n in grupo])
+        q = f'({nombres_query}) AND ("price target" OR "target price" OR "upgrades" OR "downgrades" OR "raises target" OR "cuts target" OR "initiated" OR "outperform" OR "underperform")'
+        try:
+            url = (
+                f"https://newsapi.org/v2/everything?q={requests.utils.quote(q)}"
+                f"&from={ayer}&language=en&sortBy=relevancy&pageSize=3&apiKey={NEWS_API_KEY}"
+            )
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                for a in r.json().get("articles", []):
+                    titulo = a.get('title', '')
+                    fuente = a.get('source', {}).get('name', '')
+                    desc   = a.get('description', '')
+                    resultados.append(f"[{fuente}] {titulo} — {desc}")
+        except Exception:
+            continue
+    return resultados
+
+
+# ─────────────────────────────────────────────
+# 7. DATOS FUNDAMENTALES
+# ─────────────────────────────────────────────
+def get_datos_fundamentales():
+    resultados = []
+    todos_tickers = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
+    for ticker, nombre in todos_tickers.items():
+        try:
+            info  = yf.Ticker(ticker).info
+            precio        = info.get("regularMarketPrice") or info.get("currentPrice")
+            pe_actual     = info.get("trailingPE")
+            pe_forward    = info.get("forwardPE")
+            precio_target = info.get("targetMeanPrice")
+            moneda        = info.get("currency", "USD")
+            if not precio:
+                continue
+            upside = ((precio_target - precio) / precio * 100) if precio_target else None
+            linea = f"{nombre} ({ticker}) | {precio:.2f} {moneda}"
+            if pe_actual:
+                linea += f" | P/E {pe_actual:.1f}x"
+            if pe_forward:
+                linea += f" | Fwd {pe_forward:.1f}x"
+            if precio_target:
+                linea += f" | Target {precio_target:.2f}"
+            if upside is not None:
+                emoji = "🟢" if upside > 0 else "🔴"
+                linea += f" | {emoji} {upside:+.1f}%"
+            resultados.append((upside or 0, linea))
+        except Exception:
+            continue
+    resultados.sort(key=lambda x: x[0], reverse=True)
+    return [l for _, l in resultados]
+
+
+# ─────────────────────────────────────────────
 # GEMINI — GENERAR INFORME
 # ─────────────────────────────────────────────
-def generar_informe(macro, noticias_empresas, insiders, calendario):
+def generar_informe(macro, noticias_empresas, insiders, earnings, cambios_analistas, fundamentales):
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel("gemini-2.5-flash")
     fecha = datetime.now().strftime("%d/%m/%Y")
@@ -203,55 +248,73 @@ def generar_informe(macro, noticias_empresas, insiders, calendario):
             for a in arts:
                 noticias_texto += f"  - {a}\n"
         else:
-            noticias_texto += f"\n### {empresa}\n  - Sin noticias\n"
+            noticias_texto += f"\n### {empresa}\n  - Sin noticias relevantes\n"
 
-    macro_texto     = "\n".join(macro[:15]) if macro else "Sin datos macro disponibles."
-    insiders_texto  = "\n".join(insiders[:25]) if insiders else "Sin compras de insiders detectadas."
-    calendario_texto = "\n".join(calendario[:20]) if calendario else "Sin información de calendario de resultados."
+    macro_texto     = "\n".join(macro[:15]) if macro else "Sin datos macro."
+    insiders_texto  = "\n".join(insiders) if insiders else ""
+    earnings_texto  = "\n".join(earnings) if earnings else ""
+    analistas_texto = "\n".join(cambios_analistas[:15]) if cambios_analistas else ""
+    fund_texto      = "\n".join(fundamentales) if fundamentales else "Sin datos."
 
     prompt = f"""
 Eres un analista de inversiones senior. Hoy es {fecha}.
-Genera un informe diario de seguimiento de cartera en ESPAÑOL, estructurado, conciso y orientado a la toma de decisiones.
+Genera un informe diario en ESPAÑOL, conciso y orientado a decisiones de inversión.
+Responde SOLO con HTML válido para email, sin markdown, sin bloques de código.
 
-El inversor tiene en cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
+Cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
 S&P Global, Moody's, Bitcoin, MercadoLibre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
-Kraken Robotics y TransMedics.
-También monitoriza: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia y Berkshire Hathaway.
+Kraken Robotics, TransMedics, Berkshire Hathaway.
+Watchlist: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia.
 
-Genera el informe con EXACTAMENTE estas 5 secciones:
+REGLAS DE FORMATO:
+- Usa <h2> para títulos de sección
+- Para cada empresa: <p><strong style="font-size:13px">Nombre Empresa</strong> <span style="font-size:11px">— descripción sin negrita</span></p>
+- Texto normal: font-size 11px
+- Sin bullets, usar párrafos
+- Las secciones 3, 5 y 6 SOLO aparecen si hay datos reales, si no hay datos no escribas esa sección
 
----
-## 1. RESUMEN MACRO
-Tipos de interés, inflación, geopolítica, divisas, materias primas. Qué implica para la cartera.
+ESTRUCTURA:
+<h2>1. Resumen Macro</h2>
+[tipos de interés, inflación, geopolítica, divisas, materias primas — implicaciones para la cartera]
 
-## 2. NOTICIAS POR EMPRESA
-Lista TODAS las empresas. Si hay noticias resúmelas con criterio inversor. Si no hay, escribe "Sin noticias relevantes". No omitas ninguna empresa.
+<h2>2. Noticias por Empresa</h2>
+[TODAS las empresas, nombre en negrita, descripción normal. Si no hay noticias: "Sin noticias relevantes"]
 
-## 3. COMPRAS DE INSIDERS
-SOLO mostrar compras reales de directivos (no ventas rutinarias por opciones).
-Para cada compra indica: empresa, directivo, cargo, cantidad, precio y valor total.
-Si no hay compras: "Sin compras de insiders detectadas en las últimas 72h."
+[Si hay insiders:]
+<h2>3. Compras de Insiders</h2>
+[empresa en negrita, detalle normal]
 
-## 4. SEÑALES A VIGILAR
-Riesgos, catalizadores próximos y eventos importantes de la semana.
+<h2>4. Señales a Vigilar</h2>
+[breve, solo lo importante]
 
-## 5. CALENDARIO DE RESULTADOS
-Presentaciones de la semana actual y siguiente. Indica fecha si está disponible.
----
+[Si hay earnings próximos:]
+<h2>5. Earnings Próximos 15 Días</h2>
+[empresa en negrita, fecha normal]
 
-Sé directo. Sin relleno.
+[Si hay cambios de analistas:]
+<h2>6. Cambios de Analistas</h2>
+[empresa en negrita, detalle del cambio normal]
 
-=== DATOS MACRO ===
+<h2>7. Datos Fundamentales</h2>
+[tabla con: empresa en negrita | precio | P/E | P/E Fwd | Target | Upside%, ordenado de mayor a menor upside]
+
+=== MACRO ===
 {macro_texto}
 
-=== NOTICIAS POR EMPRESA ===
+=== NOTICIAS ===
 {noticias_texto}
 
-=== COMPRAS INSIDERS (OpenInsider) ===
-{insiders_texto}
+=== INSIDERS ===
+{insiders_texto if insiders_texto else "Sin compras."}
 
-=== CALENDARIO RESULTADOS ===
-{calendario_texto}
+=== EARNINGS ===
+{earnings_texto if earnings_texto else "Sin earnings próximos."}
+
+=== CAMBIOS ANALISTAS ===
+{analistas_texto if analistas_texto else "Sin cambios."}
+
+=== FUNDAMENTALES ===
+{fund_texto}
 """
     response = model.generate_content(prompt)
     return response.text
@@ -269,15 +332,18 @@ def enviar_email(informe):
     msg["To"]      = EMAIL_DESTINO
 
     parte_texto = MIMEText(informe, "plain", "utf-8")
-    html_body = informe.replace("## ", "<h2>").replace("\n---\n", "<hr>").replace("\n", "<br>")
+
     html = f"""
-    <html><body style="font-family: Arial, sans-serif; max-width: 860px; margin: auto; padding: 20px; color: #222;">
-    <h1 style="color:#1a1a2e; border-bottom: 2px solid #1a1a2e; padding-bottom:8px;">
+    <html>
+    <body style="font-family: Arial, sans-serif; max-width: 860px; margin: auto; padding: 20px; color: #222; font-size: 11px;">
+    <h1 style="color:#1a1a2e; border-bottom: 2px solid #1a1a2e; padding-bottom:8px; font-size:18px;">
         📊 Informe Diario de Cartera — {fecha}
     </h1>
-    <div style="line-height:1.8;">{html_body}</div>
+    <div style="line-height:1.8;">
+    {informe}
+    </div>
     <hr>
-    <p style="color:#aaa; font-size:11px;">Generado automáticamente · Agente de Bolsa</p>
+    <p style="color:#aaa; font-size:10px;">Generado automáticamente · Agente de Bolsa</p>
     </body></html>
     """
     parte_html = MIMEText(html, "html", "utf-8")
@@ -295,30 +361,22 @@ def enviar_email(informe):
 # ─────────────────────────────────────────────
 def main():
     print(f"🔍 Iniciando agente — {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-
-    print("🌍 Obteniendo datos macro...")
+    print("🌍 Macro...")
     macro = get_macro_data()
-    print(f"   → {len(macro)} items macro")
-
-    print("📰 Obteniendo noticias por empresa...")
+    print("📰 Noticias por empresa...")
     noticias = get_noticias_empresas()
-    con_noticias = sum(1 for v in noticias.values() if v)
-    print(f"   → {con_noticias}/{len(noticias)} empresas con noticias")
-
-    print("📋 Consultando compras de insiders (OpenInsider)...")
+    print("📋 Insiders (OpenInsider)...")
     insiders = get_insiders_openinsider()
-    print(f"   → {len(insiders)} registros encontrados")
-
-    print("📅 Buscando calendario de resultados...")
-    calendario = get_calendario_resultados()
-    print(f"   → {len(calendario)} eventos encontrados")
-
+    print("📅 Earnings próximos...")
+    earnings = get_earnings_proximos()
+    print("🎯 Cambios de analistas...")
+    cambios = get_cambios_analistas()
+    print("📊 Datos fundamentales (yfinance)...")
+    fundamentales = get_datos_fundamentales()
     print("🤖 Generando informe con Gemini...")
-    informe = generar_informe(macro, noticias, insiders, calendario)
-
+    informe = generar_informe(macro, noticias, insiders, earnings, cambios, fundamentales)
     print("📧 Enviando email...")
     enviar_email(informe)
-
     print("✅ Completado.")
 
 
