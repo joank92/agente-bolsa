@@ -53,7 +53,7 @@ def get_macro_data():
         "recession GDP growth outlook 2026",
     ]
     noticias = []
-    ayer = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    ayer = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
     for q in queries:
         try:
             url = (
@@ -74,13 +74,13 @@ def get_macro_data():
 # ─────────────────────────────────────────────
 def get_noticias_empresas():
     resultado = {}
-    ayer = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    ayer = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
     todas = {**{t: n for t, n in EMPRESAS_USA.items()},
              **{t: v[0] for t, v in EMPRESAS_INTL.items()},
              **CRYPTO}
     for ticker, nombre in todas.items():
         try:
-            q = requests.utils.quote(f'"{nombre}"')
+            q = requests.utils.quote(nombre)
             url = (
                 f"https://newsapi.org/v2/everything?q={q}"
                 f"&from={ayer}&language=en&sortBy=relevancy&pageSize=4&apiKey={NEWS_API_KEY}"
@@ -177,7 +177,7 @@ def get_earnings_proximos():
 # ─────────────────────────────────────────────
 def get_cambios_analistas():
     resultados = []
-    ayer = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    ayer = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
     todos_nombres = list(EMPRESAS_USA.values()) + [v[0] for v in EMPRESAS_INTL.values()]
     grupos = [todos_nombres[i:i+5] for i in range(0, len(todos_nombres), 5)]
     for grupo in grupos:
