@@ -38,6 +38,34 @@ EMPRESAS_INTL = {
 
 CRYPTO = {"BTC": "Bitcoin"}
 
+# Términos de búsqueda mejorados por empresa (más contexto = más resultados financieros)
+QUERIES_EMPRESA = {
+    "Microsoft":             "Microsoft MSFT",
+    "Meta":                  "Meta Platforms Facebook",
+    "Amazon":                "Amazon AMZN AWS",
+    "Alphabet":              "Alphabet Google GOOGL",
+    "Visa":                  "Visa Inc payments",
+    "Mastercard":            "Mastercard MA payments",
+    "S&P Global":            "\"S&P Global\" SPGI",
+    "Moody's":               "\"Moody's\" MCO ratings",
+    "MercadoLibre":          "MercadoLibre MELI",
+    "Booking Holdings":      "\"Booking Holdings\" BKNG",
+    "Copart":                "Copart CPRT auctions",
+    "TransMedics":           "TransMedics TMDX",
+    "Waste Connections":     "\"Waste Connections\" WCN",
+    "McDonald's":            "McDonald's MCD",
+    "American Express":      "\"American Express\" AXP",
+    "AST SpaceMobile":       "\"AST SpaceMobile\" ASTS",
+    "Nvidia":                "Nvidia NVDA chips",
+    "Berkshire Hathaway":    "\"Berkshire Hathaway\" Buffett",
+    "Constellation Software":"\"Constellation Software\" CSU",
+    "Kraken Robotics":       "\"Kraken Robotics\"",
+    "Airbus":                "Airbus AIR aerospace",
+    "Nintendo":              "Nintendo gaming Switch",
+    "Dino Polska":           "\"Dino Polska\"",
+    "Bitcoin":               "Bitcoin BTC crypto",
+}
+
 HEADERS_WEB = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 
@@ -46,19 +74,19 @@ HEADERS_WEB = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWeb
 # ─────────────────────────────────────────────
 def get_macro_data():
     queries = [
-        "Federal Reserve interest rates inflation 2026",
-        "ECB European Central Bank rates economy",
-        "geopolitical risk trade war tariffs 2026",
-        "US dollar DXY oil gold commodities",
-        "recession GDP growth outlook 2026",
+        "Federal Reserve interest rates inflation",
+        "ECB European Central Bank rates",
+        "geopolitical risk trade tariffs",
+        "US dollar oil gold commodities",
+        "recession GDP growth outlook",
     ]
     noticias = []
-    ayer = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    desde = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
     for q in queries:
         try:
             url = (
                 f"https://newsapi.org/v2/everything?q={requests.utils.quote(q)}"
-                f"&from={ayer}&language=en&sortBy=relevancy&pageSize=3&apiKey={NEWS_API_KEY}"
+                f"&from={desde}&language=en&sortBy=publishedAt&pageSize=5&apiKey={NEWS_API_KEY}"
             )
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
@@ -70,28 +98,33 @@ def get_macro_data():
 
 
 # ─────────────────────────────────────────────
-# 2. NOTICIAS POR EMPRESA
+# 2. NOTICIAS POR EMPRESA — ventana 3 días, sin comillas
 # ─────────────────────────────────────────────
 def get_noticias_empresas():
     resultado = {}
-    ayer = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
-    todas = {**{t: n for t, n in EMPRESAS_USA.items()},
-             **{t: v[0] for t, v in EMPRESAS_INTL.items()},
-             **CRYPTO}
-    for ticker, nombre in todas.items():
+    desde = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+    todas = (
+        list(EMPRESAS_USA.values()) +
+        [v[0] for v in EMPRESAS_INTL.values()] +
+        list(CRYPTO.values())
+    )
+
+    for nombre in todas:
         try:
-            q = requests.utils.quote(nombre)
+            query = QUERIES_EMPRESA.get(nombre, nombre)
             url = (
-                f"https://newsapi.org/v2/everything?q={q}"
-                f"&from={ayer}&language=en&sortBy=relevancy&pageSize=4&apiKey={NEWS_API_KEY}"
+                f"https://newsapi.org/v2/everything?q={requests.utils.quote(query)}"
+                f"&from={desde}&language=en&sortBy=publishedAt&pageSize=6&apiKey={NEWS_API_KEY}"
             )
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 arts = r.json().get("articles", [])
                 resultado[nombre] = [
                     f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}"
-                    for a in arts
+                    for a in arts[:5]
                 ] if arts else []
+            else:
+                resultado[nombre] = []
         except Exception:
             resultado[nombre] = []
     return resultado
@@ -177,7 +210,7 @@ def get_earnings_proximos():
 # ─────────────────────────────────────────────
 def get_cambios_analistas():
     resultados = []
-    ayer = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    desde = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
     todos_nombres = list(EMPRESAS_USA.values()) + [v[0] for v in EMPRESAS_INTL.values()]
     grupos = [todos_nombres[i:i+5] for i in range(0, len(todos_nombres), 5)]
     for grupo in grupos:
@@ -186,7 +219,7 @@ def get_cambios_analistas():
         try:
             url = (
                 f"https://newsapi.org/v2/everything?q={requests.utils.quote(q)}"
-                f"&from={ayer}&language=en&sortBy=relevancy&pageSize=3&apiKey={NEWS_API_KEY}"
+                f"&from={desde}&language=en&sortBy=relevancy&pageSize=3&apiKey={NEWS_API_KEY}"
             )
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
@@ -216,7 +249,7 @@ def get_datos_fundamentales():
             if not precio:
                 continue
             upside = ((precio_target - precio) / precio * 100) if precio_target else None
-            linea = f"{nombre} ({ticker}) | Precio: {precio:.2f} {moneda}"
+            linea = f"**{nombre} ({ticker})** | Precio: {precio:.2f} {moneda}"
             if pe_actual:
                 linea += f" | P/E: {pe_actual:.1f}x"
             if pe_forward:
@@ -243,61 +276,68 @@ def generar_informe(macro, noticias_empresas, insiders, earnings, cambios_analis
 
     noticias_texto = ""
     for empresa, arts in noticias_empresas.items():
+        noticias_texto += f"\n### {empresa}\n"
         if arts:
-            noticias_texto += f"\n### {empresa}\n"
             for a in arts:
                 noticias_texto += f"  - {a}\n"
         else:
-            noticias_texto += f"\n### {empresa}\n  - Sin noticias\n"
+            noticias_texto += "  - (sin artículos recientes en NewsAPI)\n"
 
-    macro_texto      = "\n".join(macro[:15]) if macro else "Sin datos macro disponibles."
+    macro_texto      = "\n".join(macro[:20]) if macro else "Sin datos macro disponibles."
     insiders_texto   = "\n".join(insiders)
     earnings_texto   = "\n".join(earnings)
     analistas_texto  = "\n".join(cambios_analistas[:15]) if cambios_analistas else "Sin cambios detectados."
     fund_texto       = "\n".join(fundamentales) if fundamentales else "Sin datos disponibles."
 
-    # Mismo prompt que la v3 que funcionaba bien, con secciones 5,6,7 añadidas
     prompt = f"""
 Eres un analista de inversiones senior. Hoy es {fecha}.
-Genera un informe diario de seguimiento de cartera en ESPAÑOL, estructurado, conciso y orientado a la toma de decisiones.
+Genera un informe diario de seguimiento de cartera en ESPAÑOL, estructurado y orientado a la toma de decisiones.
 
 El inversor tiene en cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
 S&P Global, Moody's, Bitcoin, MercadoLibre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
 Kraken Robotics, TransMedics, Berkshire Hathaway.
 También monitoriza: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia.
 
-Genera el informe con EXACTAMENTE estas 7 secciones, usando los nombres de sección como aparecen:
+INSTRUCCIONES CRÍTICAS:
+- Para cada empresa en la sección 2, BUSCA en los datos proporcionados y EXTRAE la información financiera/empresarial relevante (resultados, lanzamientos, contratos, regulación, M&A, guidance, declaraciones de directivos, demandas, movimientos de precio significativos)
+- Si los artículos tratan de la empresa aunque sea de forma tangencial, RESUME el contenido relevante con criterio inversor
+- SOLO escribe "Sin noticias relevantes" si REALMENTE no hay ningún artículo o todos son completamente irrelevantes (ej: spam, clickbait sin contenido)
+- Sé generoso interpretando relevancia: si menciona la empresa y un hecho concreto, ya es relevante
+- NUNCA inventes información que no esté en los datos proporcionados
+
+Genera el informe con EXACTAMENTE estas 7 secciones:
 
 ## 1. RESUMEN MACRO
-Tipos de interés, inflación, geopolítica, divisas, materias primas. Qué implica para la cartera.
-Usa los datos proporcionados. Sé directo y analítico. Aporta análisis, no solo titulares.
+Análisis estructurado: tipos de interés (Fed/BCE), inflación, geopolítica, divisas, materias primas.
+Cierra con una línea sobre la implicación para la cartera.
+Formato: cada subtema con su nombre en negrita y una explicación breve. Ejemplo: **Tipos de interés:** ...
 
 ## 2. NOTICIAS POR EMPRESA
-Lista TODAS las empresas de cartera y watchlist.
-- Si hay noticias: resúmelas con criterio inversor, destaca lo relevante con detalle
-- Si no hay noticias: escribe simplemente "Sin noticias relevantes"
-No omitas ninguna empresa. Para cada empresa pon su nombre como subtítulo en formato:
-**Nombre de la empresa**: descripción
+Lista TODAS las empresas con su nombre en negrita seguido de dos puntos.
+Formato exacto: **Nombre de la empresa:** descripción de la noticia con criterio inversor.
+Si hay varias noticias de una misma empresa, intégralas en un párrafo.
+Solo escribe "Sin noticias relevantes" cuando realmente no haya artículos.
+No omitas ninguna empresa.
 
 ## 3. COMPRAS DE INSIDERS
-Compras reales de directivos detectadas. Indica empresa, directivo, cargo, cantidad, precio y valor total.
-Si no hay datos: "Sin transacciones detectadas en las últimas 72h"
+Compras reales detectadas. Empresa en negrita, detalle (directivo, cargo, cantidad, precio, valor).
+Si no hay: "Sin transacciones detectadas en las últimas 72h"
 
 ## 4. SEÑALES A VIGILAR
-Riesgos, catalizadores próximos o niveles fundamentales a tener en cuenta esta semana.
+Riesgos, catalizadores y eventos importantes de la semana. Breve.
 
 ## 5. EARNINGS PRÓXIMOS 15 DÍAS
-Solo empresas de la lista con earnings confirmados en los próximos 15 días. Indica fecha exacta.
+Empresas con earnings confirmados. Empresa en negrita, fecha.
 
 ## 6. CAMBIOS DE ANALISTAS
-Solo si hay cambios de precio objetivo o recomendación en las últimas 24h.
+Solo si hay cambios reales. Empresa en negrita, detalle del cambio.
 Si no hay nada: "Sin cambios de analistas detectados."
 
 ## 7. DATOS FUNDAMENTALES
-Reproduce los datos tal cual están en la sección FUNDAMENTALES, uno por línea, sin modificar el formato.
-YA ESTÁN ORDENADOS de mayor a menor upside potencial.
+Reproduce los datos del bloque FUNDAMENTALES exactamente como vienen, uno por línea.
+Ya están ordenados de mayor a menor upside.
 
-Sé directo. Sin relleno. Sin frases vacías.
+Sé directo. Sin relleno.
 
 === DATOS MACRO ===
 {macro_texto}
@@ -322,17 +362,13 @@ Sé directo. Sin relleno. Sin frases vacías.
 
 
 # ─────────────────────────────────────────────
-# EMAIL — formato compacto con negritas
+# EMAIL
 # ─────────────────────────────────────────────
 def markdown_a_html(texto):
-    """Conversor sencillo de markdown a HTML para email."""
     html = texto
-    # Cabeceras
     html = re.sub(r'^## (.+)$', r'<h2 style="font-size:14px; color:#1a1a2e; margin-top:18px; margin-bottom:6px;">\1</h2>', html, flags=re.MULTILINE)
     html = re.sub(r'^### (.+)$', r'<h3 style="font-size:12px; color:#333; margin-top:10px; margin-bottom:4px;">\1</h3>', html, flags=re.MULTILINE)
-    # Negritas markdown **xxx**
     html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
-    # Saltos de línea
     html = html.replace('\n', '<br>')
     return html
 
@@ -354,9 +390,7 @@ def enviar_email(informe):
     <h1 style="color:#1a1a2e; border-bottom: 2px solid #1a1a2e; padding-bottom:6px; font-size:16px; margin-bottom:14px;">
         📊 Informe Diario de Cartera — {fecha}
     </h1>
-    <div>
-    {informe_html}
-    </div>
+    <div>{informe_html}</div>
     <hr style="margin-top:20px;">
     <p style="color:#aaa; font-size:9px;">Generado automáticamente · Agente de Bolsa</p>
     </body></html>
@@ -378,16 +412,23 @@ def main():
     print(f"🔍 Iniciando agente — {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     print("🌍 Macro...")
     macro = get_macro_data()
+    print(f"   → {len(macro)} items")
     print("📰 Noticias por empresa...")
     noticias = get_noticias_empresas()
+    con_n = sum(1 for v in noticias.values() if v)
+    print(f"   → {con_n}/{len(noticias)} con noticias")
     print("📋 Insiders (OpenInsider)...")
     insiders = get_insiders_openinsider()
+    print(f"   → {len(insiders)} registros")
     print("📅 Earnings próximos 15 días...")
     earnings = get_earnings_proximos()
+    print(f"   → {len(earnings)} eventos")
     print("🎯 Cambios de analistas...")
     cambios = get_cambios_analistas()
+    print(f"   → {len(cambios)} cambios")
     print("📊 Datos fundamentales (yfinance)...")
     fundamentales = get_datos_fundamentales()
+    print(f"   → {len(fundamentales)} empresas con datos")
     print("🤖 Generando informe con Gemini...")
     informe = generar_informe(macro, noticias, insiders, earnings, cambios, fundamentales)
     print("📧 Enviando email...")
