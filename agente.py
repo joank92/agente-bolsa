@@ -350,22 +350,39 @@ def procesar_fundamentales(datos_descargados, tickers_filtro):
     return resultados
 
 
+def _f(v):
+    """Convierte un valor a float si es posible, sino None."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def formatear_linea_fundamental(d):
-    linea = f"**{d['nombre']} ({d['ticker']})** | Precio: {d['precio']:.2f} {d['moneda']}"
-    if d['pe_actual']:
-        linea += f" | P/E: {d['pe_actual']:.1f}x"
-    if d['pe_forward']:
-        linea += f" | P/E Fwd: {d['pe_forward']:.1f}x"
-    if d['target']:
-        linea += f" | Target: {d['target']:.2f}"
-    if d['upside'] is not None:
-        emoji = "🟢" if d['upside'] > 0 else "🔴"
-        linea += f" | Upside: {emoji} {d['upside']:+.1f}%"
+    precio    = _f(d.get('precio'))
+    pe_actual = _f(d.get('pe_actual'))
+    pe_fwd    = _f(d.get('pe_forward'))
+    target    = _f(d.get('target'))
+    upside    = _f(d.get('upside'))
+    moneda    = d.get('moneda', 'USD')
+
+    linea = f"**{d['nombre']} ({d['ticker']})** | Precio: {precio:.2f} {moneda}" if precio else f"**{d['nombre']} ({d['ticker']})**"
+    if pe_actual:
+        linea += f" | P/E: {pe_actual:.1f}x"
+    if pe_fwd:
+        linea += f" | P/E Fwd: {pe_fwd:.1f}x"
+    if target:
+        linea += f" | Target: {target:.2f}"
+    if upside is not None:
+        emoji = "🟢" if upside > 0 else "🔴"
+        linea += f" | Upside: {emoji} {upside:+.1f}%"
     return linea
 
 
 def formatear_seccion_fundamentales(datos, top_n=None):
-    ordenados = sorted(datos, key=lambda x: x['upside'] if x['upside'] is not None else -999, reverse=True)
+    ordenados = sorted(datos, key=lambda x: _f(x.get('upside')) if _f(x.get('upside')) is not None else -999, reverse=True)
     if top_n:
         ordenados = ordenados[:top_n]
     return [formatear_linea_fundamental(d) for d in ordenados]
@@ -386,40 +403,43 @@ def get_top_oportunidades(datos_cartera, datos_watchlist, cambios_por_ticker, to
 
     elegibles = []
     for d in todos:
-        # Filtro 1: Wide Moat
         if d['ticker'] not in TICKERS_WIDE_MOAT:
             continue
-        # Filtro 2: upside
-        if d['upside'] is None or d['upside'] < min_upside:
+        upside = _f(d.get('upside'))
+        if upside is None or upside < min_upside:
             continue
-        # Filtro 3: recomendación favorable
-        rec_mean = d.get('rec_mean')
-        num_an   = d.get('num_analistas', 0)
+        rec_mean = _f(d.get('rec_mean'))
+        num_an   = _f(d.get('num_analistas', 0)) or 0
         if rec_mean is None or rec_mean > 2.5:
             continue
-        if num_an < 3:  # mínimo 3 analistas para fiabilidad
+        if num_an < 3:
             continue
         elegibles.append(d)
 
-    # Ordenar por upside descendente
-    elegibles.sort(key=lambda x: x['upside'], reverse=True)
+    elegibles.sort(key=lambda x: _f(x.get('upside')) or 0, reverse=True)
     top_n = elegibles[:top]
 
     salida = []
     for i, d in enumerate(top_n, 1):
+        precio = _f(d.get('precio')) or 0
+        target = _f(d.get('target')) or 0
+        upside = _f(d.get('upside')) or 0
+        pe_fwd = _f(d.get('pe_forward'))
+        rm     = _f(d.get('rec_mean'))
+        moneda = d.get('moneda', 'USD')
+
         rec_texto = ""
-        if d.get('rec_mean'):
-            rm = d['rec_mean']
+        if rm is not None:
             if rm <= 1.5: rec_label = "Comprar fuerte"
             elif rm <= 2.0: rec_label = "Comprar"
             elif rm <= 2.5: rec_label = "Comprar/Mantener"
             else: rec_label = "Mantener"
             rec_texto = f" | Consenso: {rec_label} ({rm:.2f}/5, {d.get('num_analistas',0)} analistas)"
 
-        linea = f"{i}. **{d['nombre']} ({d['ticker']})** | Precio: {d['precio']:.2f} {d['moneda']} | "
-        linea += f"Target: {d['target']:.2f} | Upside: 🟢 {d['upside']:+.1f}%{rec_texto}"
-        if d.get('pe_forward'):
-            linea += f" | P/E Fwd: {d['pe_forward']:.1f}x"
+        linea = f"{i}. **{d['nombre']} ({d['ticker']})** | Precio: {precio:.2f} {moneda} | "
+        linea += f"Target: {target:.2f} | Upside: 🟢 {upside:+.1f}%{rec_texto}"
+        if pe_fwd:
+            linea += f" | P/E Fwd: {pe_fwd:.1f}x"
 
         cambios = cambios_por_ticker.get(d['ticker'], [])
         if cambios:
