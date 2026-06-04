@@ -368,31 +368,35 @@ def generar_informe(macro, noticias_empresas, insiders, earnings_proximos, earni
     fund_texto        = "\n".join(fundamentales) if fundamentales else "Sin datos."
 
     prompt = f"""
-Eres un analista de inversiones senior. Hoy es {fecha}.
-Genera un informe diario de seguimiento de cartera en ESPAÑOL, estructurado y orientado a la toma de decisiones.
+Eres un analista de inversiones senior con amplio conocimiento del mercado. Hoy es {fecha}.
+Genera un informe diario de seguimiento de cartera en ESPAÑOL, redactado de forma fluida, útil y orientado a la toma de decisiones.
 
 El inversor tiene en cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
 S&P Global, Moody's, Bitcoin, MercadoLibre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
 Kraken Robotics, TransMedics, Berkshire Hathaway.
 También monitoriza: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia.
 
-REGLAS:
-- Trabaja SOLO con los datos proporcionados, NO inventes información
-- Para cada empresa busca en los artículos info financiera/empresarial relevante y resúmela
-- Sé generoso interpretando relevancia: si la noticia menciona la empresa y un hecho concreto, ya es relevante
+REGLAS DE REDACCIÓN:
+- Usa los artículos proporcionados como fuente principal y resúmelos con criterio inversor
+- Si en los artículos no hay noticias específicas de una empresa concreta hoy, puedes apoyarte en tu conocimiento del contexto sectorial o de la situación reciente de la empresa para aportar un comentario útil de una línea
+- NO inventes hechos concretos (cifras específicas, contratos, fechas, declaraciones literales) que no estén en los datos
+- Sí puedes hablar del contexto general que ya conoces: ciclo del sector, posicionamiento competitivo, dinámica reciente del valor, catalizadores conocidos
+- El objetivo es que CADA empresa tenga al menos un comentario útil cada día, evitando repetir "Sin noticias relevantes"
 
 Genera 7 secciones:
 
 ## 1. RESUMEN MACRO
-Análisis de tipos de interés, inflación, geopolítica, divisas y materias primas.
-Cada subtema con su nombre en negrita y una explicación analítica concreta.
+Análisis sustancioso de tipos de interés (Fed/BCE), inflación, geopolítica, divisas y materias primas.
+Cada subtema con su nombre en negrita y un análisis concreto basado tanto en los artículos como en el contexto macro general.
 Ejemplo: **Tipos de interés:** ...
 Termina con una línea sobre implicaciones para la cartera.
 
 ## 2. NOTICIAS POR EMPRESA
-Lista TODAS las empresas. Formato: **Nombre:** descripción de la noticia con criterio inversor.
-Integra varias noticias de la misma empresa en un párrafo coherente.
-Solo escribe "Sin noticias relevantes" si REALMENTE no hay nada.
+Lista TODAS las empresas. Formato: **Nombre:** comentario.
+- Si hay artículos: resume con criterio inversor.
+- Si no hay artículos relevantes pero sí contexto reciente conocido del valor o sector: aporta un comentario breve (1 línea) sobre la situación o catalizador pendiente.
+- Solo en casos donde realmente no haya nada útil que decir: "Sin novedades destacadas."
+Integra varias noticias de una misma empresa en un párrafo coherente.
 
 ## 3. COMPRAS DE INSIDERS (últimos 30 días)
 Lista todas las compras detectadas. Empresa en negrita.
