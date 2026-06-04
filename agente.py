@@ -20,6 +20,9 @@ GMAIL_APP_PASS  = os.environ.get("GMAIL_APP_PASS", "")
 EMAIL_DESTINO   = os.environ.get("EMAIL_DESTINO", "")
 # ============================================================
 
+# ─────────────────────────────────────────────
+# EMPRESAS EN CARTERA (puntos 1-7)
+# ─────────────────────────────────────────────
 EMPRESAS_USA = {
     "MSFT": "Microsoft", "META": "Meta", "AMZN": "Amazon", "GOOGL": "Alphabet",
     "V": "Visa", "MA": "Mastercard", "SPGI": "S&P Global", "MCO": "Moody's",
@@ -31,7 +34,7 @@ EMPRESAS_USA = {
 
 EMPRESAS_INTL = {
     "CSU.TO": ("Constellation Software", "CA"),
-    "KRB.V":  ("Kraken Robotics", "CA"),
+    "PNG.V":  ("Kraken Robotics", "CA"),
     "AIR.PA": ("Airbus", "FR"),
     "7974.T": ("Nintendo", "JP"),
     "DNP.WA": ("Dino Polska", "PL"),
@@ -39,6 +42,78 @@ EMPRESAS_INTL = {
 
 CRYPTO = {"BTC": "Bitcoin"}
 
+# ─────────────────────────────────────────────
+# WATCHLIST (punto 8 — solo datos fundamentales)
+# ─────────────────────────────────────────────
+WATCHLIST = {
+    # USA
+    "SAP":   "SAP SE",
+    "AMD":   "AMD",
+    "ORCL":  "Oracle",
+    "TSM":   "Taiwan Semiconductor",
+    "BABA":  "Alibaba",
+    "FTNT":  "Fortinet",
+    "PDD":   "PDD Holdings",
+    "FICO":  "Fair Isaac",
+    "IBKR":  "Interactive Brokers",
+    "UBER":  "Uber",
+    "BX":    "Blackstone",
+    "UNH":   "UnitedHealth",
+    "ROP":   "Roper Technologies",
+    "LIN":   "Linde",
+    "BN":    "Brookfield",
+    "TMO":   "Thermo Fisher",
+    "LMT":   "Lockheed Martin",
+    "RACE":  "Ferrari",
+    "BLK":   "BlackRock",
+    "AAPL":  "Apple",
+    "NVO":   "Novo Nordisk",
+    "ADP":   "ADP",
+    "ORLY":  "O'Reilly Automotive",
+    "NFLX":  "Netflix",
+    "COST":  "Costco",
+    "ODFL":  "Old Dominion",
+    "WMT":   "Walmart",
+    "ADBE":  "Adobe",
+    "NOW":   "ServiceNow",
+    "KKR":   "KKR",
+    "TDG":   "TransDigm",
+    "MSCI":  "MSCI",
+    "KNSL":  "Kinsale Capital",
+    "FDS":   "FactSet",
+    "YUMC":  "Yum China",
+    "KOF":   "Coca-Cola FEMSA",
+    "HEI":   "Heico",
+    "DPZ":   "Domino's Pizza",
+    "POOL":  "Pool Corp",
+    "AZO":   "AutoZone",
+    "DHR":   "Danaher",
+    "WM":    "Waste Management",
+    # Internacionales
+    "RMS.PA": "Hermès",
+    "MC.PA":  "LVMH",
+    "MONC.MI":"Moncler",
+    "WKL.AS": "Wolters Kluwer",
+    "CNR.TO": "Canadian National Railway",
+    "CCH.L":  "Coca-Cola HBC",
+    "ENX.PA": "Euronext",
+    "TOI.V":  "Topicus.com",
+    "ATD.TO": "Couche-Tard",
+    "ASML":   "ASML Holding",
+    "ITX.MC": "Inditex",
+    "LSEG.L": "London Stock Exchange Group",
+    "1211.HK":"BYD",
+    # Específicos del usuario
+    "0700.HK": "Tencent",
+    "TEQ.TO":  "Technion (TEQ)",
+    "MAG.PA":  "Madder Group",
+    "LOUP.PA": "LDC",
+    "ACP.WA":  "Asseco Poland",
+}
+
+# ─────────────────────────────────────────────
+# QUERIES PARA NOTICIAS (solo cartera)
+# ─────────────────────────────────────────────
 QUERIES_EMPRESA = {
     "Microsoft":              "Microsoft MSFT",
     "Meta":                   "Meta Platforms",
@@ -69,14 +144,10 @@ QUERIES_EMPRESA = {
 HEADERS_WEB = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 
-# ─────────────────────────────────────────────
-# GOOGLE NEWS RSS — nuevo motor de noticias gratuito
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
+# GOOGLE NEWS RSS
+# ═════════════════════════════════════════════
 def fetch_google_news(query, dias=3, max_items=6):
-    """
-    Descarga noticias de Google News RSS para una query.
-    Devuelve lista de dicts con titulo, fuente, fecha, url, descripcion.
-    """
     try:
         q_codificada = urllib.parse.quote(query)
         url = f"https://news.google.com/rss/search?q={q_codificada}+when:{dias}d&hl=en-US&gl=US&ceid=US:en"
@@ -92,7 +163,6 @@ def fetch_google_news(query, dias=3, max_items=6):
             pub     = it.find("pubDate").get_text(strip=True) if it.find("pubDate") else ""
             source  = it.find("source").get_text(strip=True) if it.find("source") else ""
             desc    = it.find("description").get_text(strip=True) if it.find("description") else ""
-            # Limpiar HTML de descripcion
             desc_clean = BeautifulSoup(desc, "html.parser").get_text(" ", strip=True)[:300]
             resultados.append({
                 "titulo": titulo, "fuente": source, "fecha": pub,
@@ -103,9 +173,9 @@ def fetch_google_news(query, dias=3, max_items=6):
         return []
 
 
-# ─────────────────────────────────────────────
-# 1. MACRO — combinando NewsAPI + Google News
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
+# 1. MACRO
+# ═════════════════════════════════════════════
 def get_macro_data():
     noticias = []
     queries_macro = [
@@ -115,7 +185,6 @@ def get_macro_data():
         "US dollar oil gold commodities",
         "recession GDP growth outlook",
     ]
-    # NewsAPI
     desde = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
     for q in queries_macro:
         try:
@@ -129,16 +198,15 @@ def get_macro_data():
                     noticias.append(f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}")
         except Exception:
             continue
-    # Google News RSS — añade volumen
     for q in queries_macro:
         for n in fetch_google_news(q, dias=3, max_items=4):
             noticias.append(f"[{n['fuente']}] {n['titulo']} — {n['descripcion']}")
     return noticias
 
 
-# ─────────────────────────────────────────────
-# 2. NOTICIAS POR EMPRESA — NewsAPI + Google News
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
+# 2. NOTICIAS POR EMPRESA (solo cartera)
+# ═════════════════════════════════════════════
 def get_noticias_empresas():
     resultado = {}
     desde = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
@@ -147,12 +215,9 @@ def get_noticias_empresas():
         [v[0] for v in EMPRESAS_INTL.values()] +
         list(CRYPTO.values())
     )
-
     for nombre in todas:
         items = []
         query = QUERIES_EMPRESA.get(nombre, nombre)
-
-        # 1) NewsAPI
         try:
             url = (
                 f"https://newsapi.org/v2/everything?q={urllib.parse.quote(query)}"
@@ -164,139 +229,163 @@ def get_noticias_empresas():
                     items.append(f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}")
         except Exception:
             pass
-
-        # 2) Google News RSS — sin límite de plan
-        google = fetch_google_news(query, dias=3, max_items=5)
-        for n in google:
+        for n in fetch_google_news(query, dias=3, max_items=5):
             items.append(f"[{n['fuente']}] {n['titulo']} — {n['descripcion']}")
-
-        # Deduplicar titulares parecidos
-        vistos = set()
-        items_unicos = []
+        vistos, items_unicos = set(), []
         for it in items:
             clave = it[:80].lower()
             if clave not in vistos:
                 vistos.add(clave)
                 items_unicos.append(it)
-
-        resultado[nombre] = items_unicos[:8]  # tope por empresa
+        resultado[nombre] = items_unicos[:8]
     return resultado
 
 
-# ─────────────────────────────────────────────
-# 3. INSIDERS — OpenInsider — ÚLTIMOS 30 DÍAS
-# ─────────────────────────────────────────────
-def get_insiders_openinsider():
+# ═════════════════════════════════════════════
+# 3. INSIDERS — yfinance.insider_transactions
+# ═════════════════════════════════════════════
+def get_insiders():
     resultados = []
+    hoy = datetime.now().date()
+    hace_30 = hoy - timedelta(days=30)
     for ticker, nombre in EMPRESAS_USA.items():
         try:
-            # daysago=30 → últimos 30 días
-            url = (
-                f"http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh="
-                f"&fd=30&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=30&xp=1&xs=1"
-                f"&vl=&vh=&ocl=&och=&sic1=-1&sicl=100&sich=9999"
-                f"&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h="
-                f"&sortcol=0&cnt=20&action=1"
-            )
-            r = requests.get(url, headers=HEADERS_WEB, timeout=15)
-            if r.status_code != 200:
+            stock = yf.Ticker(ticker)
+            trans = stock.insider_transactions
+            if trans is None or len(trans) == 0:
                 continue
-            soup = BeautifulSoup(r.text, "html.parser")
-            tabla = soup.find("table", {"class": "tinytable"})
-            if not tabla:
-                continue
-            for fila in tabla.find_all("tr")[1:]:
-                celdas = fila.find_all("td")
-                if len(celdas) < 12:
+            for _, row in trans.iterrows():
+                fecha_raw = row.get("Start Date") if "Start Date" in row else row.get("Date")
+                if fecha_raw is None:
                     continue
-                tipo = celdas[6].get_text(strip=True)
-                if tipo != "P":
+                try:
+                    fecha_date = fecha_raw.date() if hasattr(fecha_raw, "date") else datetime.strptime(str(fecha_raw)[:10], "%Y-%m-%d").date()
+                except Exception:
                     continue
-                fecha    = celdas[1].get_text(strip=True)
-                insider  = celdas[4].get_text(strip=True)
-                cargo    = celdas[5].get_text(strip=True)
-                precio   = celdas[7].get_text(strip=True)
-                cantidad = celdas[8].get_text(strip=True)
-                valor    = celdas[9].get_text(strip=True)
+                if fecha_date < hace_30 or fecha_date > hoy:
+                    continue
+                texto = (str(row.get("Text", "")) + " " + str(row.get("Transaction", ""))).lower()
+                if any(k in texto for k in ["sale", "sell", "dispo"]):
+                    continue
+                if not any(k in texto for k in ["purchase", "buy", "open market", "acqui"]):
+                    if "grant" in texto or "option" in texto or "award" in texto or "convers" in texto:
+                        continue
+                insider  = row.get("Insider", "")
+                cargo    = row.get("Position", "")
+                shares   = row.get("Shares", "")
+                valor    = row.get("Value", "")
                 resultados.append(
-                    f"🟢 COMPRA | {nombre} ({ticker}) | {fecha} | "
-                    f"{insider} ({cargo}) | {cantidad} acciones a {precio} | "
-                    f"Valor total: {valor}"
+                    f"🟢 COMPRA | {nombre} ({ticker}) | {fecha_date.strftime('%d/%m/%Y')} | "
+                    f"{insider} ({cargo}) | {shares} acciones | Valor: {valor}"
                 )
         except Exception:
             continue
     return resultados if resultados else ["Sin compras de insiders detectadas en los últimos 30 días."]
 
 
-# ─────────────────────────────────────────────
-# 5. EARNINGS — Próximos 30 días + Reportados últimos 7 días
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
+# 5. EARNINGS — próximos 30 días + reportados últimos 7
+# ═════════════════════════════════════════════
 def get_earnings_calendario():
     proximos = []
     reportados = []
     hoy = datetime.now().date()
-    en_30_dias = hoy + timedelta(days=30)
-    hace_7_dias = hoy - timedelta(days=7)
+    en_30 = hoy + timedelta(days=30)
+    hace_7 = hoy - timedelta(days=7)
 
-    todos_tickers = list(EMPRESAS_USA.keys()) + list(EMPRESAS_INTL.keys())
-    for ticker in todos_tickers:
+    tickers_cartera = list(EMPRESAS_USA.keys()) + list(EMPRESAS_INTL.keys())
+    nombres_cartera = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
+
+    for ticker in tickers_cartera:
         try:
             stock = yf.Ticker(ticker)
-            cal = stock.calendar
-            if cal is None or not isinstance(cal, dict):
-                continue
-            earnings_date = cal.get("Earnings Date")
-            if earnings_date is None:
-                continue
-            if isinstance(earnings_date, list):
-                earnings_date = earnings_date[0] if earnings_date else None
-            if earnings_date is None:
-                continue
-            if hasattr(earnings_date, 'date'):
-                earnings_date = earnings_date.date()
+            nombre = nombres_cartera.get(ticker, ticker)
+            fechas_encontradas = []
 
-            nombre = EMPRESAS_USA.get(ticker) or (EMPRESAS_INTL.get(ticker, (ticker,))[0])
-            if hoy <= earnings_date <= en_30_dias:
-                proximos.append(f"📅 {nombre} ({ticker}) — {earnings_date.strftime('%d/%m/%Y')}")
-            elif hace_7_dias <= earnings_date < hoy:
-                reportados.append(f"✅ {nombre} ({ticker}) — reportó el {earnings_date.strftime('%d/%m/%Y')}")
+            # Método 1: stock.calendar
+            try:
+                cal = stock.calendar
+                if cal and isinstance(cal, dict):
+                    ed = cal.get("Earnings Date")
+                    if ed:
+                        if isinstance(ed, list):
+                            for e in ed:
+                                if hasattr(e, 'date'):
+                                    fechas_encontradas.append(e.date())
+                        elif hasattr(ed, 'date'):
+                            fechas_encontradas.append(ed.date())
+            except Exception:
+                pass
+
+            # Método 2: stock.earnings_dates (más fiable)
+            try:
+                ed_df = stock.earnings_dates
+                if ed_df is not None and len(ed_df) > 0:
+                    for idx in ed_df.index:
+                        if hasattr(idx, 'date'):
+                            fechas_encontradas.append(idx.date())
+            except Exception:
+                pass
+
+            # Procesar fechas
+            for f in fechas_encontradas:
+                if hoy <= f <= en_30:
+                    linea = f"📅 {nombre} ({ticker}) — {f.strftime('%d/%m/%Y')}"
+                    if linea not in proximos:
+                        proximos.append(linea)
+                elif hace_7 <= f < hoy:
+                    linea = f"✅ {nombre} ({ticker}) — reportó el {f.strftime('%d/%m/%Y')}"
+                    if linea not in reportados:
+                        reportados.append(linea)
         except Exception:
             continue
 
     return proximos, reportados
 
 
-# ─────────────────────────────────────────────
-# 6. CAMBIOS DE ANALISTAS — ÚLTIMOS 15 DÍAS
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
+# 6. CAMBIOS ANALISTAS — yfinance + búsqueda
+# ═════════════════════════════════════════════
 def get_cambios_analistas():
     resultados = []
-    desde = (datetime.now() - timedelta(days=15)).strftime("%Y-%m-%d")
-    todos_nombres = list(EMPRESAS_USA.values()) + [v[0] for v in EMPRESAS_INTL.values()]
+    hoy = datetime.now().date()
+    hace_15 = hoy - timedelta(days=15)
 
-    # 1) NewsAPI
-    grupos = [todos_nombres[i:i+5] for i in range(0, len(todos_nombres), 5)]
-    for grupo in grupos:
-        nombres_query = " OR ".join([f'"{n}"' for n in grupo])
-        q = f'({nombres_query}) AND ("price target" OR "raises target" OR "cuts target" OR "upgrades" OR "downgrades" OR "outperform" OR "underperform" OR "initiated" OR "reiterate")'
+    # 1) yfinance.upgrades_downgrades (más fiable para cambios reales)
+    tickers_cartera = list(EMPRESAS_USA.keys()) + list(EMPRESAS_INTL.keys())
+    nombres_cartera = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
+
+    for ticker in tickers_cartera:
         try:
-            url = (
-                f"https://newsapi.org/v2/everything?q={urllib.parse.quote(q)}"
-                f"&from={desde}&language=en&sortBy=relevancy&pageSize=5&apiKey={NEWS_API_KEY}"
-            )
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                for a in r.json().get("articles", []):
-                    resultados.append(
-                        f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}"
-                    )
+            stock = yf.Ticker(ticker)
+            ud = stock.upgrades_downgrades
+            if ud is None or len(ud) == 0:
+                continue
+            nombre = nombres_cartera.get(ticker, ticker)
+            for idx, row in ud.iterrows():
+                try:
+                    fecha_date = idx.date() if hasattr(idx, 'date') else datetime.strptime(str(idx)[:10], "%Y-%m-%d").date()
+                except Exception:
+                    continue
+                if fecha_date < hace_15 or fecha_date > hoy:
+                    continue
+                firma = row.get("Firm", "")
+                desde_grade = row.get("FromGrade", "")
+                hasta_grade = row.get("ToGrade", "")
+                accion = row.get("Action", "")
+                resultados.append(
+                    f"📊 {nombre} ({ticker}) | {fecha_date.strftime('%d/%m/%Y')} | "
+                    f"{firma} | {desde_grade} → {hasta_grade} | {accion}"
+                )
         except Exception:
             continue
 
-    # 2) Google News RSS — busca por cada empresa
-    for nombre in todos_nombres:
-        q_analista = f'{nombre} price target OR upgrade OR downgrade'
-        for n in fetch_google_news(q_analista, dias=15, max_items=2):
+    # 2) Google News como complemento
+    desde = (datetime.now() - timedelta(days=15)).strftime("%Y-%m-%d")
+    nombres_lista = list(EMPRESAS_USA.values()) + [v[0] for v in EMPRESAS_INTL.values()]
+    for nombre in nombres_lista:
+        q = f"{nombre} price target upgrade downgrade"
+        for n in fetch_google_news(q, dias=15, max_items=2):
             resultados.append(f"[{n['fuente']}] {n['titulo']} — {n['descripcion']}")
 
     # Deduplicar
@@ -306,16 +395,16 @@ def get_cambios_analistas():
         if clave not in vistos:
             vistos.add(clave)
             unicos.append(r)
-    return unicos[:25]
+    return unicos[:30]
 
 
-# ─────────────────────────────────────────────
-# 7. DATOS FUNDAMENTALES — ORDENADOS POR UPSIDE
-# ─────────────────────────────────────────────
-def get_datos_fundamentales():
+# ═════════════════════════════════════════════
+# 7. FUNDAMENTALES CARTERA
+# ═════════════════════════════════════════════
+def get_datos_fundamentales(tickers_dict):
+    """Obtiene fundamentales para un dict {ticker: nombre} y los ordena por upside."""
     resultados = []
-    todos_tickers = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
-    for ticker, nombre in todos_tickers.items():
+    for ticker, nombre in tickers_dict.items():
         try:
             info          = yf.Ticker(ticker).info
             precio        = info.get("regularMarketPrice") or info.get("currentPrice")
@@ -343,10 +432,19 @@ def get_datos_fundamentales():
     return [l for _, l in resultados]
 
 
-# ─────────────────────────────────────────────
-# GEMINI — GENERAR INFORME
-# ─────────────────────────────────────────────
-def generar_informe(macro, noticias_empresas, insiders, earnings_proximos, earnings_reportados, cambios_analistas, fundamentales):
+def get_fundamentales_cartera():
+    tickers = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
+    return get_datos_fundamentales(tickers)
+
+
+def get_fundamentales_watchlist():
+    return get_datos_fundamentales(WATCHLIST)
+
+
+# ═════════════════════════════════════════════
+# GEMINI — INFORME
+# ═════════════════════════════════════════════
+def generar_informe(macro, noticias_empresas, insiders, earnings_proximos, earnings_reportados, cambios_analistas, fund_cartera, fund_watchlist):
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel("gemini-2.5-flash")
     fecha = datetime.now().strftime("%d/%m/%Y")
@@ -360,61 +458,67 @@ def generar_informe(macro, noticias_empresas, insiders, earnings_proximos, earni
         else:
             noticias_texto += "  - (sin artículos recientes)\n"
 
-    macro_texto       = "\n".join(macro[:30]) if macro else "Sin datos macro disponibles."
+    macro_texto       = "\n".join(macro[:30]) if macro else "Sin datos macro."
     insiders_texto    = "\n".join(insiders)
     earn_prox_texto   = "\n".join(earnings_proximos) if earnings_proximos else "Sin earnings en los próximos 30 días."
-    earn_rep_texto    = "\n".join(earnings_reportados) if earnings_reportados else "Ninguna empresa de la lista ha reportado en los últimos 7 días."
+    earn_rep_texto    = "\n".join(earnings_reportados) if earnings_reportados else "Ninguna empresa ha reportado en los últimos 7 días."
     analistas_texto   = "\n".join(cambios_analistas) if cambios_analistas else "Sin cambios detectados."
-    fund_texto        = "\n".join(fundamentales) if fundamentales else "Sin datos."
+    fund_cart_texto   = "\n".join(fund_cartera) if fund_cartera else "Sin datos."
+    fund_watch_texto  = "\n".join(fund_watchlist) if fund_watchlist else "Sin datos."
 
     prompt = f"""
 Eres un analista de inversiones senior con amplio conocimiento del mercado. Hoy es {fecha}.
-Genera un informe diario de seguimiento de cartera en ESPAÑOL, redactado de forma fluida, útil y orientado a la toma de decisiones.
+Genera un informe diario de seguimiento de cartera en ESPAÑOL, redactado de forma fluida y útil, orientado a la toma de decisiones.
 
 El inversor tiene en cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
 S&P Global, Moody's, Bitcoin, MercadoLibre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
 Kraken Robotics, TransMedics, Berkshire Hathaway.
-También monitoriza: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia.
+También monitoriza (cartera ampliada): Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia.
 
 REGLAS DE REDACCIÓN:
-- Usa los artículos proporcionados como fuente principal y resúmelos con criterio inversor
-- Si en los artículos no hay noticias específicas de una empresa concreta hoy, puedes apoyarte en tu conocimiento del contexto sectorial o de la situación reciente de la empresa para aportar un comentario útil de una línea
-- NO inventes hechos concretos (cifras específicas, contratos, fechas, declaraciones literales) que no estén en los datos
-- Sí puedes hablar del contexto general que ya conoces: ciclo del sector, posicionamiento competitivo, dinámica reciente del valor, catalizadores conocidos
-- El objetivo es que CADA empresa tenga al menos un comentario útil cada día, evitando repetir "Sin noticias relevantes"
+- Usa los artículos proporcionados como fuente principal
+- Si no hay artículo específico, puedes apoyarte en tu conocimiento del contexto sectorial reciente para aportar una línea útil
+- NO inventes hechos concretos (cifras, contratos, declaraciones literales) que no estén en los datos
+- Sí puedes hablar del contexto general del sector o del valor
+- El objetivo es que CADA empresa tenga al menos un comentario útil, evitando repetir "Sin noticias"
 
-Genera 7 secciones:
+Genera EXACTAMENTE estas 8 secciones:
 
 ## 1. RESUMEN MACRO
 Análisis sustancioso de tipos de interés (Fed/BCE), inflación, geopolítica, divisas y materias primas.
-Cada subtema con su nombre en negrita y un análisis concreto basado tanto en los artículos como en el contexto macro general.
+Cada subtema con su nombre en negrita y un análisis concreto.
 Ejemplo: **Tipos de interés:** ...
 Termina con una línea sobre implicaciones para la cartera.
 
 ## 2. NOTICIAS POR EMPRESA
-Lista TODAS las empresas. Formato: **Nombre:** comentario.
+Lista TODAS las empresas de cartera. Formato: **Nombre:** comentario.
 - Si hay artículos: resume con criterio inversor.
-- Si no hay artículos relevantes pero sí contexto reciente conocido del valor o sector: aporta un comentario breve (1 línea) sobre la situación o catalizador pendiente.
-- Solo en casos donde realmente no haya nada útil que decir: "Sin novedades destacadas."
-Integra varias noticias de una misma empresa en un párrafo coherente.
+- Si no hay artículos pero conoces contexto reciente: aporta un comentario útil (1 línea).
+- Solo "Sin novedades destacadas" si realmente no hay nada que decir.
 
 ## 3. COMPRAS DE INSIDERS (últimos 30 días)
-Lista todas las compras detectadas. Empresa en negrita.
-Si no hay: "Sin compras de insiders en los últimos 30 días."
+Lista las compras detectadas. Empresa en negrita.
+Si no hay datos: "Sin compras de insiders en los últimos 30 días."
 
 ## 4. SEÑALES A VIGILAR
-Riesgos y catalizadores importantes. Breve.
+Identifica riesgos y catalizadores reales basados en los datos macro y noticias proporcionados, además de tu conocimiento de la cartera.
+Menciona earnings importantes próximos, cambios de analistas relevantes, factores macro a vigilar.
+NUNCA escribas "no hay nada que vigilar" — siempre hay catalizadores en una cartera de 19 empresas.
 
 ## 5. CALENDARIO DE RESULTADOS
-Subsección A: **Próximos 30 días** — empresas con earnings programados, con fecha.
-Subsección B: **Reportados en los últimos 7 días** — empresas que ya presentaron. Si tienes información en las noticias sobre sus resultados (EPS, ingresos, guidance), añádela.
+**Próximos 30 días:** lista las empresas con earnings programados, con fecha. Si la lista está vacía indícalo.
+**Reportados últimos 7 días:** lista las que han reportado. Si has visto noticias sobre sus resultados (EPS, ingresos, guidance), añade un breve comentario.
 
 ## 6. CAMBIOS DE ANALISTAS (últimos 15 días)
-Cambios de precio objetivo o recomendación. Indica analista/banco, empresa, cambio, nuevo target.
+Lista cambios de precio objetivo o recomendación. Indica banco, empresa, cambio.
 Si no hay nada: "Sin cambios relevantes en los últimos 15 días."
 
-## 7. DATOS FUNDAMENTALES
-Reproduce los datos del bloque FUNDAMENTALES tal cual, uno por línea. Ya están ordenados por upside.
+## 7. DATOS FUNDAMENTALES — CARTERA
+Reproduce el bloque FUNDAMENTALES CARTERA tal cual, uno por línea. Ya ordenados por upside.
+
+## 8. DATOS FUNDAMENTALES — WATCHLIST
+Reproduce el bloque FUNDAMENTALES WATCHLIST tal cual, uno por línea. Ya ordenados por upside.
+NO comentes estas empresas — solo los datos.
 
 Sé directo. Sin relleno.
 
@@ -436,16 +540,19 @@ Sé directo. Sin relleno.
 === CAMBIOS ANALISTAS (15 días) ===
 {analistas_texto}
 
-=== FUNDAMENTALES ===
-{fund_texto}
+=== FUNDAMENTALES CARTERA ===
+{fund_cart_texto}
+
+=== FUNDAMENTALES WATCHLIST ===
+{fund_watch_texto}
 """
     response = model.generate_content(prompt)
     return response.text
 
 
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 # EMAIL
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 def markdown_a_html(texto):
     html = texto
     html = re.sub(r'^## (.+)$', r'<h2 style="font-size:14px; color:#1a1a2e; margin-top:18px; margin-bottom:6px;">\1</h2>', html, flags=re.MULTILINE)
@@ -487,33 +594,36 @@ def enviar_email(informe):
     print(f"✅ Informe enviado a {EMAIL_DESTINO}")
 
 
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 # MAIN
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 def main():
     print(f"🔍 Iniciando agente — {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    print("🌍 Macro (NewsAPI + Google News)...")
+    print("🌍 Macro...")
     macro = get_macro_data()
     print(f"   → {len(macro)} items")
-    print("📰 Noticias por empresa (NewsAPI + Google News)...")
+    print("📰 Noticias por empresa...")
     noticias = get_noticias_empresas()
     con_n = sum(1 for v in noticias.values() if v)
     total_n = sum(len(v) for v in noticias.values())
-    print(f"   → {con_n}/{len(noticias)} empresas con noticias ({total_n} artículos)")
-    print("📋 Insiders últimos 30 días...")
-    insiders = get_insiders_openinsider()
+    print(f"   → {con_n}/{len(noticias)} empresas ({total_n} artículos)")
+    print("📋 Insiders 30 días (yfinance)...")
+    insiders = get_insiders()
     print(f"   → {len(insiders)} registros")
     print("📅 Earnings...")
     earnings_prox, earnings_rep = get_earnings_calendario()
     print(f"   → {len(earnings_prox)} próximos / {len(earnings_rep)} reportados")
-    print("🎯 Cambios de analistas (últimos 15 días)...")
+    print("🎯 Cambios de analistas (yfinance + Google News)...")
     cambios = get_cambios_analistas()
     print(f"   → {len(cambios)} cambios")
-    print("📊 Datos fundamentales...")
-    fundamentales = get_datos_fundamentales()
-    print(f"   → {len(fundamentales)} empresas")
+    print("📊 Fundamentales cartera...")
+    fund_cartera = get_fundamentales_cartera()
+    print(f"   → {len(fund_cartera)} empresas")
+    print("📈 Fundamentales watchlist...")
+    fund_watchlist = get_fundamentales_watchlist()
+    print(f"   → {len(fund_watchlist)} empresas")
     print("🤖 Generando informe con Gemini...")
-    informe = generar_informe(macro, noticias, insiders, earnings_prox, earnings_rep, cambios, fundamentales)
+    informe = generar_informe(macro, noticias, insiders, earnings_prox, earnings_rep, cambios, fund_cartera, fund_watchlist)
     print("📧 Enviando email...")
     enviar_email(informe)
     print("✅ Completado.")
