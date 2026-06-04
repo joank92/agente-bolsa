@@ -1,4 +1,5 @@
 import os
+import re
 import smtplib
 import requests
 from datetime import datetime, timedelta
@@ -141,7 +142,7 @@ def get_insiders_openinsider():
 
 
 # ─────────────────────────────────────────────
-# 5. EARNINGS PRÓXIMOS 15 DÍAS (yfinance)
+# 5. EARNINGS PRÓXIMOS 15 DÍAS
 # ─────────────────────────────────────────────
 def get_earnings_proximos():
     resultados = []
@@ -181,7 +182,7 @@ def get_cambios_analistas():
     grupos = [todos_nombres[i:i+5] for i in range(0, len(todos_nombres), 5)]
     for grupo in grupos:
         nombres_query = " OR ".join([f'"{n}"' for n in grupo])
-        q = f'({nombres_query}) AND ("price target" OR "target price" OR "upgrades" OR "downgrades" OR "raises target" OR "cuts target" OR "initiated" OR "outperform" OR "underperform")'
+        q = f'({nombres_query}) AND ("price target" OR "target price" OR "upgrades" OR "downgrades" OR "raises target" OR "cuts target" OR "outperform" OR "underperform")'
         try:
             url = (
                 f"https://newsapi.org/v2/everything?q={requests.utils.quote(q)}"
@@ -199,7 +200,7 @@ def get_cambios_analistas():
 
 
 # ─────────────────────────────────────────────
-# 7. DATOS FUNDAMENTALES (yfinance)
+# 7. DATOS FUNDAMENTALES — ORDENADOS POR UPSIDE
 # ─────────────────────────────────────────────
 def get_datos_fundamentales():
     resultados = []
@@ -255,52 +256,53 @@ def generar_informe(macro, noticias_empresas, insiders, earnings, cambios_analis
     analistas_texto  = "\n".join(cambios_analistas[:15]) if cambios_analistas else "Sin cambios detectados."
     fund_texto       = "\n".join(fundamentales) if fundamentales else "Sin datos disponibles."
 
+    # Mismo prompt que la v3 que funcionaba bien, con secciones 5,6,7 añadidas
     prompt = f"""
 Eres un analista de inversiones senior. Hoy es {fecha}.
 Genera un informe diario de seguimiento de cartera en ESPAÑOL, estructurado, conciso y orientado a la toma de decisiones.
 
-Cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
+El inversor tiene en cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
 S&P Global, Moody's, Bitcoin, MercadoLibre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
 Kraken Robotics, TransMedics, Berkshire Hathaway.
-Watchlist: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia.
+También monitoriza: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia.
 
-Genera el informe con EXACTAMENTE estas 7 secciones:
+Genera el informe con EXACTAMENTE estas 7 secciones, usando los nombres de sección como aparecen:
 
 ## 1. RESUMEN MACRO
-Tipos de interés, inflación, geopolítica, divisas, materias primas. Qué implica para la cartera. Directo y analítico.
+Tipos de interés, inflación, geopolítica, divisas, materias primas. Qué implica para la cartera.
+Usa los datos proporcionados. Sé directo y analítico. Aporta análisis, no solo titulares.
 
 ## 2. NOTICIAS POR EMPRESA
 Lista TODAS las empresas de cartera y watchlist.
-- Si hay noticias: resúmelas con criterio inversor, sé específico
-- Si no hay noticias: escribe "Sin noticias relevantes"
-No omitas ninguna empresa.
+- Si hay noticias: resúmelas con criterio inversor, destaca lo relevante con detalle
+- Si no hay noticias: escribe simplemente "Sin noticias relevantes"
+No omitas ninguna empresa. Para cada empresa pon su nombre como subtítulo en formato:
+**Nombre de la empresa**: descripción
 
 ## 3. COMPRAS DE INSIDERS
-Solo compras reales de directivos. Indica empresa, directivo, cargo, cantidad, precio y valor total.
-Si no hay compras: "Sin compras de insiders detectadas en las últimas 72h."
+Compras reales de directivos detectadas. Indica empresa, directivo, cargo, cantidad, precio y valor total.
+Si no hay datos: "Sin transacciones detectadas en las últimas 72h"
 
 ## 4. SEÑALES A VIGILAR
-Riesgos y catalizadores importantes de la semana. Breve y directo.
+Riesgos, catalizadores próximos o niveles fundamentales a tener en cuenta esta semana.
 
 ## 5. EARNINGS PRÓXIMOS 15 DÍAS
-Empresas de la lista con earnings confirmados en los próximos 15 días. Indica fecha.
-Si no hay ninguna: "Sin earnings confirmados en los próximos 15 días."
+Solo empresas de la lista con earnings confirmados en los próximos 15 días. Indica fecha exacta.
 
 ## 6. CAMBIOS DE ANALISTAS
-Solo si hay cambios de precio objetivo o recomendación en las últimas 24h. Indica analista, empresa, cambio y nuevo target.
-Si no hay nada relevante: "Sin cambios de analistas detectados."
+Solo si hay cambios de precio objetivo o recomendación en las últimas 24h.
+Si no hay nada: "Sin cambios de analistas detectados."
 
 ## 7. DATOS FUNDAMENTALES
-Muestra los datos tal como vienen en los datos proporcionados, uno por línea, sin modificar.
-Ya están ordenados de mayor a menor upside potencial.
+Reproduce los datos tal cual están en la sección FUNDAMENTALES, uno por línea, sin modificar el formato.
+YA ESTÁN ORDENADOS de mayor a menor upside potencial.
 
----
 Sé directo. Sin relleno. Sin frases vacías.
 
-=== MACRO ===
+=== DATOS MACRO ===
 {macro_texto}
 
-=== NOTICIAS ===
+=== NOTICIAS POR EMPRESA ===
 {noticias_texto}
 
 === INSIDERS ===
@@ -320,8 +322,21 @@ Sé directo. Sin relleno. Sin frases vacías.
 
 
 # ─────────────────────────────────────────────
-# EMAIL
+# EMAIL — formato compacto con negritas
 # ─────────────────────────────────────────────
+def markdown_a_html(texto):
+    """Conversor sencillo de markdown a HTML para email."""
+    html = texto
+    # Cabeceras
+    html = re.sub(r'^## (.+)$', r'<h2 style="font-size:14px; color:#1a1a2e; margin-top:18px; margin-bottom:6px;">\1</h2>', html, flags=re.MULTILINE)
+    html = re.sub(r'^### (.+)$', r'<h3 style="font-size:12px; color:#333; margin-top:10px; margin-bottom:4px;">\1</h3>', html, flags=re.MULTILINE)
+    # Negritas markdown **xxx**
+    html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
+    # Saltos de línea
+    html = html.replace('\n', '<br>')
+    return html
+
+
 def enviar_email(informe):
     fecha = datetime.now().strftime("%d/%m/%Y")
     asunto = f"📊 Informe Diario de Cartera — {fecha}"
@@ -331,22 +346,19 @@ def enviar_email(informe):
     msg["To"]      = EMAIL_DESTINO
 
     parte_texto = MIMEText(informe, "plain", "utf-8")
-
-    html_body = informe.replace("\n## ", "\n<h2>").replace("## ", "<h2>")
-    html_body = html_body.replace("\n### ", "\n<h3>").replace("### ", "<h3>")
-    html_body = html_body.replace("\n- ", "\n• ").replace("\n", "<br>")
+    informe_html = markdown_a_html(informe)
 
     html = f"""
     <html>
-    <body style="font-family: Arial, sans-serif; max-width: 860px; margin: auto; padding: 20px; color: #222; font-size: 12px;">
-    <h1 style="color:#1a1a2e; border-bottom: 2px solid #1a1a2e; padding-bottom:8px; font-size:18px;">
+    <body style="font-family: Arial, Helvetica, sans-serif; max-width: 820px; margin: auto; padding: 16px; color: #222; font-size: 11px; line-height: 1.55;">
+    <h1 style="color:#1a1a2e; border-bottom: 2px solid #1a1a2e; padding-bottom:6px; font-size:16px; margin-bottom:14px;">
         📊 Informe Diario de Cartera — {fecha}
     </h1>
-    <div style="line-height:1.8;">
-    {html_body}
+    <div>
+    {informe_html}
     </div>
-    <hr>
-    <p style="color:#aaa; font-size:10px;">Generado automáticamente · Agente de Bolsa</p>
+    <hr style="margin-top:20px;">
+    <p style="color:#aaa; font-size:9px;">Generado automáticamente · Agente de Bolsa</p>
     </body></html>
     """
     parte_html = MIMEText(html, "html", "utf-8")
