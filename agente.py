@@ -137,11 +137,11 @@ def get_insiders_openinsider():
                 )
         except Exception:
             continue
-    return resultados if resultados else []
+    return resultados if resultados else ["Sin compras de insiders detectadas en las últimas 72h."]
 
 
 # ─────────────────────────────────────────────
-# 5. EARNINGS PRÓXIMOS 15 DÍAS
+# 5. EARNINGS PRÓXIMOS 15 DÍAS (yfinance)
 # ─────────────────────────────────────────────
 def get_earnings_proximos():
     resultados = []
@@ -168,7 +168,7 @@ def get_earnings_proximos():
                 resultados.append(f"📅 {nombre} ({ticker}) — {earnings_date.strftime('%d/%m/%Y')}")
         except Exception:
             continue
-    return resultados
+    return resultados if resultados else ["Sin earnings confirmados en los próximos 15 días."]
 
 
 # ─────────────────────────────────────────────
@@ -190,24 +190,23 @@ def get_cambios_analistas():
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 for a in r.json().get("articles", []):
-                    titulo = a.get('title', '')
-                    fuente = a.get('source', {}).get('name', '')
-                    desc   = a.get('description', '')
-                    resultados.append(f"[{fuente}] {titulo} — {desc}")
+                    resultados.append(
+                        f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}"
+                    )
         except Exception:
             continue
     return resultados
 
 
 # ─────────────────────────────────────────────
-# 7. DATOS FUNDAMENTALES
+# 7. DATOS FUNDAMENTALES (yfinance)
 # ─────────────────────────────────────────────
 def get_datos_fundamentales():
     resultados = []
     todos_tickers = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
     for ticker, nombre in todos_tickers.items():
         try:
-            info  = yf.Ticker(ticker).info
+            info          = yf.Ticker(ticker).info
             precio        = info.get("regularMarketPrice") or info.get("currentPrice")
             pe_actual     = info.get("trailingPE")
             pe_forward    = info.get("forwardPE")
@@ -216,17 +215,17 @@ def get_datos_fundamentales():
             if not precio:
                 continue
             upside = ((precio_target - precio) / precio * 100) if precio_target else None
-            linea = f"{nombre} ({ticker}) | {precio:.2f} {moneda}"
+            linea = f"{nombre} ({ticker}) | Precio: {precio:.2f} {moneda}"
             if pe_actual:
-                linea += f" | P/E {pe_actual:.1f}x"
+                linea += f" | P/E: {pe_actual:.1f}x"
             if pe_forward:
-                linea += f" | Fwd {pe_forward:.1f}x"
+                linea += f" | P/E Fwd: {pe_forward:.1f}x"
             if precio_target:
-                linea += f" | Target {precio_target:.2f}"
+                linea += f" | Target: {precio_target:.2f}"
             if upside is not None:
                 emoji = "🟢" if upside > 0 else "🔴"
-                linea += f" | {emoji} {upside:+.1f}%"
-            resultados.append((upside or 0, linea))
+                linea += f" | Upside: {emoji} {upside:+.1f}%"
+            resultados.append((upside if upside is not None else -999, linea))
         except Exception:
             continue
     resultados.sort(key=lambda x: x[0], reverse=True)
@@ -248,55 +247,55 @@ def generar_informe(macro, noticias_empresas, insiders, earnings, cambios_analis
             for a in arts:
                 noticias_texto += f"  - {a}\n"
         else:
-            noticias_texto += f"\n### {empresa}\n  - Sin noticias relevantes\n"
+            noticias_texto += f"\n### {empresa}\n  - Sin noticias\n"
 
-    macro_texto     = "\n".join(macro[:15]) if macro else "Sin datos macro."
-    insiders_texto  = "\n".join(insiders) if insiders else ""
-    earnings_texto  = "\n".join(earnings) if earnings else ""
-    analistas_texto = "\n".join(cambios_analistas[:15]) if cambios_analistas else ""
-    fund_texto      = "\n".join(fundamentales) if fundamentales else "Sin datos."
+    macro_texto      = "\n".join(macro[:15]) if macro else "Sin datos macro disponibles."
+    insiders_texto   = "\n".join(insiders)
+    earnings_texto   = "\n".join(earnings)
+    analistas_texto  = "\n".join(cambios_analistas[:15]) if cambios_analistas else "Sin cambios detectados."
+    fund_texto       = "\n".join(fundamentales) if fundamentales else "Sin datos disponibles."
 
     prompt = f"""
 Eres un analista de inversiones senior. Hoy es {fecha}.
-Genera un informe diario en ESPAÑOL, conciso y orientado a decisiones de inversión.
-Responde SOLO con HTML válido para email, sin markdown, sin bloques de código.
+Genera un informe diario de seguimiento de cartera en ESPAÑOL, estructurado, conciso y orientado a la toma de decisiones.
 
 Cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
 S&P Global, Moody's, Bitcoin, MercadoLibre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
 Kraken Robotics, TransMedics, Berkshire Hathaway.
 Watchlist: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia.
 
-REGLAS DE FORMATO:
-- Usa <h2> para títulos de sección
-- Para cada empresa: <p><strong style="font-size:13px">Nombre Empresa</strong> <span style="font-size:11px">— descripción sin negrita</span></p>
-- Texto normal: font-size 11px
-- Sin bullets, usar párrafos
-- Las secciones 3, 5 y 6 SOLO aparecen si hay datos reales, si no hay datos no escribas esa sección
+Genera el informe con EXACTAMENTE estas 7 secciones:
 
-ESTRUCTURA:
-<h2>1. Resumen Macro</h2>
-[tipos de interés, inflación, geopolítica, divisas, materias primas — implicaciones para la cartera]
+## 1. RESUMEN MACRO
+Tipos de interés, inflación, geopolítica, divisas, materias primas. Qué implica para la cartera. Directo y analítico.
 
-<h2>2. Noticias por Empresa</h2>
-[TODAS las empresas, nombre en negrita, descripción normal. Si no hay noticias: "Sin noticias relevantes"]
+## 2. NOTICIAS POR EMPRESA
+Lista TODAS las empresas de cartera y watchlist.
+- Si hay noticias: resúmelas con criterio inversor, sé específico
+- Si no hay noticias: escribe "Sin noticias relevantes"
+No omitas ninguna empresa.
 
-[Si hay insiders:]
-<h2>3. Compras de Insiders</h2>
-[empresa en negrita, detalle normal]
+## 3. COMPRAS DE INSIDERS
+Solo compras reales de directivos. Indica empresa, directivo, cargo, cantidad, precio y valor total.
+Si no hay compras: "Sin compras de insiders detectadas en las últimas 72h."
 
-<h2>4. Señales a Vigilar</h2>
-[breve, solo lo importante]
+## 4. SEÑALES A VIGILAR
+Riesgos y catalizadores importantes de la semana. Breve y directo.
 
-[Si hay earnings próximos:]
-<h2>5. Earnings Próximos 15 Días</h2>
-[empresa en negrita, fecha normal]
+## 5. EARNINGS PRÓXIMOS 15 DÍAS
+Empresas de la lista con earnings confirmados en los próximos 15 días. Indica fecha.
+Si no hay ninguna: "Sin earnings confirmados en los próximos 15 días."
 
-[Si hay cambios de analistas:]
-<h2>6. Cambios de Analistas</h2>
-[empresa en negrita, detalle del cambio normal]
+## 6. CAMBIOS DE ANALISTAS
+Solo si hay cambios de precio objetivo o recomendación en las últimas 24h. Indica analista, empresa, cambio y nuevo target.
+Si no hay nada relevante: "Sin cambios de analistas detectados."
 
-<h2>7. Datos Fundamentales</h2>
-[tabla con: empresa en negrita | precio | P/E | P/E Fwd | Target | Upside%, ordenado de mayor a menor upside]
+## 7. DATOS FUNDAMENTALES
+Muestra los datos tal como vienen en los datos proporcionados, uno por línea, sin modificar.
+Ya están ordenados de mayor a menor upside potencial.
+
+---
+Sé directo. Sin relleno. Sin frases vacías.
 
 === MACRO ===
 {macro_texto}
@@ -305,13 +304,13 @@ ESTRUCTURA:
 {noticias_texto}
 
 === INSIDERS ===
-{insiders_texto if insiders_texto else "Sin compras."}
+{insiders_texto}
 
 === EARNINGS ===
-{earnings_texto if earnings_texto else "Sin earnings próximos."}
+{earnings_texto}
 
 === CAMBIOS ANALISTAS ===
-{analistas_texto if analistas_texto else "Sin cambios."}
+{analistas_texto}
 
 === FUNDAMENTALES ===
 {fund_texto}
@@ -333,14 +332,18 @@ def enviar_email(informe):
 
     parte_texto = MIMEText(informe, "plain", "utf-8")
 
+    html_body = informe.replace("\n## ", "\n<h2>").replace("## ", "<h2>")
+    html_body = html_body.replace("\n### ", "\n<h3>").replace("### ", "<h3>")
+    html_body = html_body.replace("\n- ", "\n• ").replace("\n", "<br>")
+
     html = f"""
     <html>
-    <body style="font-family: Arial, sans-serif; max-width: 860px; margin: auto; padding: 20px; color: #222; font-size: 11px;">
+    <body style="font-family: Arial, sans-serif; max-width: 860px; margin: auto; padding: 20px; color: #222; font-size: 12px;">
     <h1 style="color:#1a1a2e; border-bottom: 2px solid #1a1a2e; padding-bottom:8px; font-size:18px;">
         📊 Informe Diario de Cartera — {fecha}
     </h1>
     <div style="line-height:1.8;">
-    {informe}
+    {html_body}
     </div>
     <hr>
     <p style="color:#aaa; font-size:10px;">Generado automáticamente · Agente de Bolsa</p>
@@ -367,7 +370,7 @@ def main():
     noticias = get_noticias_empresas()
     print("📋 Insiders (OpenInsider)...")
     insiders = get_insiders_openinsider()
-    print("📅 Earnings próximos...")
+    print("📅 Earnings próximos 15 días...")
     earnings = get_earnings_proximos()
     print("🎯 Cambios de analistas...")
     cambios = get_cambios_analistas()
