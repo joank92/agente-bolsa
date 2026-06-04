@@ -2,6 +2,7 @@ import os
 import re
 import smtplib
 import requests
+import urllib.parse
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -38,55 +39,89 @@ EMPRESAS_INTL = {
 
 CRYPTO = {"BTC": "Bitcoin"}
 
-# Términos de búsqueda mejorados por empresa (más contexto = más resultados financieros)
 QUERIES_EMPRESA = {
-    "Microsoft":             "Microsoft MSFT",
-    "Meta":                  "Meta Platforms Facebook",
-    "Amazon":                "Amazon AMZN AWS",
-    "Alphabet":              "Alphabet Google GOOGL",
-    "Visa":                  "Visa Inc payments",
-    "Mastercard":            "Mastercard MA payments",
-    "S&P Global":            "\"S&P Global\" SPGI",
-    "Moody's":               "\"Moody's\" MCO ratings",
-    "MercadoLibre":          "MercadoLibre MELI",
-    "Booking Holdings":      "\"Booking Holdings\" BKNG",
-    "Copart":                "Copart CPRT auctions",
-    "TransMedics":           "TransMedics TMDX",
-    "Waste Connections":     "\"Waste Connections\" WCN",
-    "McDonald's":            "McDonald's MCD",
-    "American Express":      "\"American Express\" AXP",
-    "AST SpaceMobile":       "\"AST SpaceMobile\" ASTS",
-    "Nvidia":                "Nvidia NVDA chips",
-    "Berkshire Hathaway":    "\"Berkshire Hathaway\" Buffett",
-    "Constellation Software":"\"Constellation Software\" CSU",
-    "Kraken Robotics":       "\"Kraken Robotics\"",
-    "Airbus":                "Airbus AIR aerospace",
-    "Nintendo":              "Nintendo gaming Switch",
-    "Dino Polska":           "\"Dino Polska\"",
-    "Bitcoin":               "Bitcoin BTC crypto",
+    "Microsoft":              "Microsoft MSFT",
+    "Meta":                   "Meta Platforms",
+    "Amazon":                 "Amazon AMZN",
+    "Alphabet":               "Alphabet Google",
+    "Visa":                   "Visa Inc payments",
+    "Mastercard":             "Mastercard payments",
+    "S&P Global":             "S&P Global SPGI",
+    "Moody's":                "Moody's MCO",
+    "MercadoLibre":           "MercadoLibre",
+    "Booking Holdings":       "Booking Holdings",
+    "Copart":                 "Copart auctions",
+    "TransMedics":            "TransMedics organ",
+    "Waste Connections":      "Waste Connections",
+    "McDonald's":             "McDonald's MCD",
+    "American Express":       "American Express AXP",
+    "AST SpaceMobile":        "AST SpaceMobile",
+    "Nvidia":                 "Nvidia chips",
+    "Berkshire Hathaway":     "Berkshire Hathaway Buffett",
+    "Constellation Software": "Constellation Software CSU",
+    "Kraken Robotics":        "Kraken Robotics",
+    "Airbus":                 "Airbus aerospace",
+    "Nintendo":               "Nintendo Switch",
+    "Dino Polska":            "Dino Polska",
+    "Bitcoin":                "Bitcoin BTC",
 }
 
 HEADERS_WEB = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 
 # ─────────────────────────────────────────────
-# 1. MACRO
+# GOOGLE NEWS RSS — nuevo motor de noticias gratuito
+# ─────────────────────────────────────────────
+def fetch_google_news(query, dias=3, max_items=6):
+    """
+    Descarga noticias de Google News RSS para una query.
+    Devuelve lista de dicts con titulo, fuente, fecha, url, descripcion.
+    """
+    try:
+        q_codificada = urllib.parse.quote(query)
+        url = f"https://news.google.com/rss/search?q={q_codificada}+when:{dias}d&hl=en-US&gl=US&ceid=US:en"
+        r = requests.get(url, headers=HEADERS_WEB, timeout=10)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "xml")
+        items = soup.find_all("item")[:max_items]
+        resultados = []
+        for it in items:
+            titulo  = it.find("title").get_text(strip=True) if it.find("title") else ""
+            link    = it.find("link").get_text(strip=True)  if it.find("link") else ""
+            pub     = it.find("pubDate").get_text(strip=True) if it.find("pubDate") else ""
+            source  = it.find("source").get_text(strip=True) if it.find("source") else ""
+            desc    = it.find("description").get_text(strip=True) if it.find("description") else ""
+            # Limpiar HTML de descripcion
+            desc_clean = BeautifulSoup(desc, "html.parser").get_text(" ", strip=True)[:300]
+            resultados.append({
+                "titulo": titulo, "fuente": source, "fecha": pub,
+                "url": link, "descripcion": desc_clean
+            })
+        return resultados
+    except Exception:
+        return []
+
+
+# ─────────────────────────────────────────────
+# 1. MACRO — combinando NewsAPI + Google News
 # ─────────────────────────────────────────────
 def get_macro_data():
-    queries = [
+    noticias = []
+    queries_macro = [
         "Federal Reserve interest rates inflation",
         "ECB European Central Bank rates",
         "geopolitical risk trade tariffs",
         "US dollar oil gold commodities",
         "recession GDP growth outlook",
     ]
-    noticias = []
+    # NewsAPI
     desde = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
-    for q in queries:
+    for q in queries_macro:
         try:
             url = (
-                f"https://newsapi.org/v2/everything?q={requests.utils.quote(q)}"
-                f"&from={desde}&language=en&sortBy=publishedAt&pageSize=5&apiKey={NEWS_API_KEY}"
+                f"https://newsapi.org/v2/everything?q={urllib.parse.quote(q)}"
+                f"&from={desde}&language=en&sortBy=publishedAt&pageSize=4&apiKey={NEWS_API_KEY}"
             )
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
@@ -94,11 +129,15 @@ def get_macro_data():
                     noticias.append(f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}")
         except Exception:
             continue
+    # Google News RSS — añade volumen
+    for q in queries_macro:
+        for n in fetch_google_news(q, dias=3, max_items=4):
+            noticias.append(f"[{n['fuente']}] {n['titulo']} — {n['descripcion']}")
     return noticias
 
 
 # ─────────────────────────────────────────────
-# 2. NOTICIAS POR EMPRESA — ventana 3 días, sin comillas
+# 2. NOTICIAS POR EMPRESA — NewsAPI + Google News
 # ─────────────────────────────────────────────
 def get_noticias_empresas():
     resultado = {}
@@ -110,39 +149,54 @@ def get_noticias_empresas():
     )
 
     for nombre in todas:
+        items = []
+        query = QUERIES_EMPRESA.get(nombre, nombre)
+
+        # 1) NewsAPI
         try:
-            query = QUERIES_EMPRESA.get(nombre, nombre)
             url = (
-                f"https://newsapi.org/v2/everything?q={requests.utils.quote(query)}"
-                f"&from={desde}&language=en&sortBy=publishedAt&pageSize=6&apiKey={NEWS_API_KEY}"
+                f"https://newsapi.org/v2/everything?q={urllib.parse.quote(query)}"
+                f"&from={desde}&language=en&sortBy=publishedAt&pageSize=4&apiKey={NEWS_API_KEY}"
             )
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
-                arts = r.json().get("articles", [])
-                resultado[nombre] = [
-                    f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}"
-                    for a in arts[:5]
-                ] if arts else []
-            else:
-                resultado[nombre] = []
+                for a in r.json().get("articles", []):
+                    items.append(f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}")
         except Exception:
-            resultado[nombre] = []
+            pass
+
+        # 2) Google News RSS — sin límite de plan
+        google = fetch_google_news(query, dias=3, max_items=5)
+        for n in google:
+            items.append(f"[{n['fuente']}] {n['titulo']} — {n['descripcion']}")
+
+        # Deduplicar titulares parecidos
+        vistos = set()
+        items_unicos = []
+        for it in items:
+            clave = it[:80].lower()
+            if clave not in vistos:
+                vistos.add(clave)
+                items_unicos.append(it)
+
+        resultado[nombre] = items_unicos[:8]  # tope por empresa
     return resultado
 
 
 # ─────────────────────────────────────────────
-# 3. INSIDERS — OpenInsider
+# 3. INSIDERS — OpenInsider — ÚLTIMOS 30 DÍAS
 # ─────────────────────────────────────────────
 def get_insiders_openinsider():
     resultados = []
     for ticker, nombre in EMPRESAS_USA.items():
         try:
+            # daysago=30 → últimos 30 días
             url = (
                 f"http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh="
-                f"&fd=3&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=3&xp=1&xs=1"
+                f"&fd=30&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=30&xp=1&xs=1"
                 f"&vl=&vh=&ocl=&och=&sic1=-1&sicl=100&sich=9999"
                 f"&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h="
-                f"&sortcol=0&cnt=10&action=1"
+                f"&sortcol=0&cnt=20&action=1"
             )
             r = requests.get(url, headers=HEADERS_WEB, timeout=15)
             if r.status_code != 200:
@@ -171,24 +225,27 @@ def get_insiders_openinsider():
                 )
         except Exception:
             continue
-    return resultados if resultados else ["Sin compras de insiders detectadas en las últimas 72h."]
+    return resultados if resultados else ["Sin compras de insiders detectadas en los últimos 30 días."]
 
 
 # ─────────────────────────────────────────────
-# 5. EARNINGS PRÓXIMOS 15 DÍAS
+# 5. EARNINGS — Próximos 30 días + Reportados últimos 7 días
 # ─────────────────────────────────────────────
-def get_earnings_proximos():
-    resultados = []
+def get_earnings_calendario():
+    proximos = []
+    reportados = []
     hoy = datetime.now().date()
-    en_15_dias = hoy + timedelta(days=15)
+    en_30_dias = hoy + timedelta(days=30)
+    hace_7_dias = hoy - timedelta(days=7)
+
     todos_tickers = list(EMPRESAS_USA.keys()) + list(EMPRESAS_INTL.keys())
     for ticker in todos_tickers:
         try:
             stock = yf.Ticker(ticker)
             cal = stock.calendar
-            if cal is None:
+            if cal is None or not isinstance(cal, dict):
                 continue
-            earnings_date = cal.get("Earnings Date") if isinstance(cal, dict) else None
+            earnings_date = cal.get("Earnings Date")
             if earnings_date is None:
                 continue
             if isinstance(earnings_date, list):
@@ -197,29 +254,35 @@ def get_earnings_proximos():
                 continue
             if hasattr(earnings_date, 'date'):
                 earnings_date = earnings_date.date()
-            if hoy <= earnings_date <= en_15_dias:
-                nombre = EMPRESAS_USA.get(ticker) or (EMPRESAS_INTL.get(ticker, (ticker,))[0])
-                resultados.append(f"📅 {nombre} ({ticker}) — {earnings_date.strftime('%d/%m/%Y')}")
+
+            nombre = EMPRESAS_USA.get(ticker) or (EMPRESAS_INTL.get(ticker, (ticker,))[0])
+            if hoy <= earnings_date <= en_30_dias:
+                proximos.append(f"📅 {nombre} ({ticker}) — {earnings_date.strftime('%d/%m/%Y')}")
+            elif hace_7_dias <= earnings_date < hoy:
+                reportados.append(f"✅ {nombre} ({ticker}) — reportó el {earnings_date.strftime('%d/%m/%Y')}")
         except Exception:
             continue
-    return resultados if resultados else ["Sin earnings confirmados en los próximos 15 días."]
+
+    return proximos, reportados
 
 
 # ─────────────────────────────────────────────
-# 6. CAMBIOS DE ANALISTAS
+# 6. CAMBIOS DE ANALISTAS — ÚLTIMOS 15 DÍAS
 # ─────────────────────────────────────────────
 def get_cambios_analistas():
     resultados = []
-    desde = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    desde = (datetime.now() - timedelta(days=15)).strftime("%Y-%m-%d")
     todos_nombres = list(EMPRESAS_USA.values()) + [v[0] for v in EMPRESAS_INTL.values()]
+
+    # 1) NewsAPI
     grupos = [todos_nombres[i:i+5] for i in range(0, len(todos_nombres), 5)]
     for grupo in grupos:
         nombres_query = " OR ".join([f'"{n}"' for n in grupo])
-        q = f'({nombres_query}) AND ("price target" OR "target price" OR "upgrades" OR "downgrades" OR "raises target" OR "cuts target" OR "outperform" OR "underperform")'
+        q = f'({nombres_query}) AND ("price target" OR "raises target" OR "cuts target" OR "upgrades" OR "downgrades" OR "outperform" OR "underperform" OR "initiated" OR "reiterate")'
         try:
             url = (
-                f"https://newsapi.org/v2/everything?q={requests.utils.quote(q)}"
-                f"&from={desde}&language=en&sortBy=relevancy&pageSize=3&apiKey={NEWS_API_KEY}"
+                f"https://newsapi.org/v2/everything?q={urllib.parse.quote(q)}"
+                f"&from={desde}&language=en&sortBy=relevancy&pageSize=5&apiKey={NEWS_API_KEY}"
             )
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
@@ -229,7 +292,21 @@ def get_cambios_analistas():
                     )
         except Exception:
             continue
-    return resultados
+
+    # 2) Google News RSS — busca por cada empresa
+    for nombre in todos_nombres:
+        q_analista = f'{nombre} price target OR upgrade OR downgrade'
+        for n in fetch_google_news(q_analista, dias=15, max_items=2):
+            resultados.append(f"[{n['fuente']}] {n['titulo']} — {n['descripcion']}")
+
+    # Deduplicar
+    vistos, unicos = set(), []
+    for r in resultados:
+        clave = r[:80].lower()
+        if clave not in vistos:
+            vistos.add(clave)
+            unicos.append(r)
+    return unicos[:25]
 
 
 # ─────────────────────────────────────────────
@@ -269,7 +346,7 @@ def get_datos_fundamentales():
 # ─────────────────────────────────────────────
 # GEMINI — GENERAR INFORME
 # ─────────────────────────────────────────────
-def generar_informe(macro, noticias_empresas, insiders, earnings, cambios_analistas, fundamentales):
+def generar_informe(macro, noticias_empresas, insiders, earnings_proximos, earnings_reportados, cambios_analistas, fundamentales):
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel("gemini-2.5-flash")
     fecha = datetime.now().strftime("%d/%m/%Y")
@@ -281,13 +358,14 @@ def generar_informe(macro, noticias_empresas, insiders, earnings, cambios_analis
             for a in arts:
                 noticias_texto += f"  - {a}\n"
         else:
-            noticias_texto += "  - (sin artículos recientes en NewsAPI)\n"
+            noticias_texto += "  - (sin artículos recientes)\n"
 
-    macro_texto      = "\n".join(macro[:20]) if macro else "Sin datos macro disponibles."
-    insiders_texto   = "\n".join(insiders)
-    earnings_texto   = "\n".join(earnings)
-    analistas_texto  = "\n".join(cambios_analistas[:15]) if cambios_analistas else "Sin cambios detectados."
-    fund_texto       = "\n".join(fundamentales) if fundamentales else "Sin datos disponibles."
+    macro_texto       = "\n".join(macro[:30]) if macro else "Sin datos macro disponibles."
+    insiders_texto    = "\n".join(insiders)
+    earn_prox_texto   = "\n".join(earnings_proximos) if earnings_proximos else "Sin earnings en los próximos 30 días."
+    earn_rep_texto    = "\n".join(earnings_reportados) if earnings_reportados else "Ninguna empresa de la lista ha reportado en los últimos 7 días."
+    analistas_texto   = "\n".join(cambios_analistas) if cambios_analistas else "Sin cambios detectados."
+    fund_texto        = "\n".join(fundamentales) if fundamentales else "Sin datos."
 
     prompt = f"""
 Eres un analista de inversiones senior. Hoy es {fecha}.
@@ -298,44 +376,41 @@ S&P Global, Moody's, Bitcoin, MercadoLibre, Booking Holdings, Copart, Dino Polsk
 Kraken Robotics, TransMedics, Berkshire Hathaway.
 También monitoriza: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia.
 
-INSTRUCCIONES CRÍTICAS:
-- Para cada empresa en la sección 2, BUSCA en los datos proporcionados y EXTRAE la información financiera/empresarial relevante (resultados, lanzamientos, contratos, regulación, M&A, guidance, declaraciones de directivos, demandas, movimientos de precio significativos)
-- Si los artículos tratan de la empresa aunque sea de forma tangencial, RESUME el contenido relevante con criterio inversor
-- SOLO escribe "Sin noticias relevantes" si REALMENTE no hay ningún artículo o todos son completamente irrelevantes (ej: spam, clickbait sin contenido)
-- Sé generoso interpretando relevancia: si menciona la empresa y un hecho concreto, ya es relevante
-- NUNCA inventes información que no esté en los datos proporcionados
+REGLAS:
+- Trabaja SOLO con los datos proporcionados, NO inventes información
+- Para cada empresa busca en los artículos info financiera/empresarial relevante y resúmela
+- Sé generoso interpretando relevancia: si la noticia menciona la empresa y un hecho concreto, ya es relevante
 
-Genera el informe con EXACTAMENTE estas 7 secciones:
+Genera 7 secciones:
 
 ## 1. RESUMEN MACRO
-Análisis estructurado: tipos de interés (Fed/BCE), inflación, geopolítica, divisas, materias primas.
-Cierra con una línea sobre la implicación para la cartera.
-Formato: cada subtema con su nombre en negrita y una explicación breve. Ejemplo: **Tipos de interés:** ...
+Análisis de tipos de interés, inflación, geopolítica, divisas y materias primas.
+Cada subtema con su nombre en negrita y una explicación analítica concreta.
+Ejemplo: **Tipos de interés:** ...
+Termina con una línea sobre implicaciones para la cartera.
 
 ## 2. NOTICIAS POR EMPRESA
-Lista TODAS las empresas con su nombre en negrita seguido de dos puntos.
-Formato exacto: **Nombre de la empresa:** descripción de la noticia con criterio inversor.
-Si hay varias noticias de una misma empresa, intégralas en un párrafo.
-Solo escribe "Sin noticias relevantes" cuando realmente no haya artículos.
-No omitas ninguna empresa.
+Lista TODAS las empresas. Formato: **Nombre:** descripción de la noticia con criterio inversor.
+Integra varias noticias de la misma empresa en un párrafo coherente.
+Solo escribe "Sin noticias relevantes" si REALMENTE no hay nada.
 
-## 3. COMPRAS DE INSIDERS
-Compras reales detectadas. Empresa en negrita, detalle (directivo, cargo, cantidad, precio, valor).
-Si no hay: "Sin transacciones detectadas en las últimas 72h"
+## 3. COMPRAS DE INSIDERS (últimos 30 días)
+Lista todas las compras detectadas. Empresa en negrita.
+Si no hay: "Sin compras de insiders en los últimos 30 días."
 
 ## 4. SEÑALES A VIGILAR
-Riesgos, catalizadores y eventos importantes de la semana. Breve.
+Riesgos y catalizadores importantes. Breve.
 
-## 5. EARNINGS PRÓXIMOS 15 DÍAS
-Empresas con earnings confirmados. Empresa en negrita, fecha.
+## 5. CALENDARIO DE RESULTADOS
+Subsección A: **Próximos 30 días** — empresas con earnings programados, con fecha.
+Subsección B: **Reportados en los últimos 7 días** — empresas que ya presentaron. Si tienes información en las noticias sobre sus resultados (EPS, ingresos, guidance), añádela.
 
-## 6. CAMBIOS DE ANALISTAS
-Solo si hay cambios reales. Empresa en negrita, detalle del cambio.
-Si no hay nada: "Sin cambios de analistas detectados."
+## 6. CAMBIOS DE ANALISTAS (últimos 15 días)
+Cambios de precio objetivo o recomendación. Indica analista/banco, empresa, cambio, nuevo target.
+Si no hay nada: "Sin cambios relevantes en los últimos 15 días."
 
 ## 7. DATOS FUNDAMENTALES
-Reproduce los datos del bloque FUNDAMENTALES exactamente como vienen, uno por línea.
-Ya están ordenados de mayor a menor upside.
+Reproduce los datos del bloque FUNDAMENTALES tal cual, uno por línea. Ya están ordenados por upside.
 
 Sé directo. Sin relleno.
 
@@ -345,13 +420,16 @@ Sé directo. Sin relleno.
 === NOTICIAS POR EMPRESA ===
 {noticias_texto}
 
-=== INSIDERS ===
+=== INSIDERS (30 días) ===
 {insiders_texto}
 
-=== EARNINGS ===
-{earnings_texto}
+=== EARNINGS PRÓXIMOS 30 DÍAS ===
+{earn_prox_texto}
 
-=== CAMBIOS ANALISTAS ===
+=== EARNINGS REPORTADOS ÚLTIMOS 7 DÍAS ===
+{earn_rep_texto}
+
+=== CAMBIOS ANALISTAS (15 días) ===
 {analistas_texto}
 
 === FUNDAMENTALES ===
@@ -410,27 +488,28 @@ def enviar_email(informe):
 # ─────────────────────────────────────────────
 def main():
     print(f"🔍 Iniciando agente — {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    print("🌍 Macro...")
+    print("🌍 Macro (NewsAPI + Google News)...")
     macro = get_macro_data()
     print(f"   → {len(macro)} items")
-    print("📰 Noticias por empresa...")
+    print("📰 Noticias por empresa (NewsAPI + Google News)...")
     noticias = get_noticias_empresas()
     con_n = sum(1 for v in noticias.values() if v)
-    print(f"   → {con_n}/{len(noticias)} con noticias")
-    print("📋 Insiders (OpenInsider)...")
+    total_n = sum(len(v) for v in noticias.values())
+    print(f"   → {con_n}/{len(noticias)} empresas con noticias ({total_n} artículos)")
+    print("📋 Insiders últimos 30 días...")
     insiders = get_insiders_openinsider()
     print(f"   → {len(insiders)} registros")
-    print("📅 Earnings próximos 15 días...")
-    earnings = get_earnings_proximos()
-    print(f"   → {len(earnings)} eventos")
-    print("🎯 Cambios de analistas...")
+    print("📅 Earnings...")
+    earnings_prox, earnings_rep = get_earnings_calendario()
+    print(f"   → {len(earnings_prox)} próximos / {len(earnings_rep)} reportados")
+    print("🎯 Cambios de analistas (últimos 15 días)...")
     cambios = get_cambios_analistas()
     print(f"   → {len(cambios)} cambios")
-    print("📊 Datos fundamentales (yfinance)...")
+    print("📊 Datos fundamentales...")
     fundamentales = get_datos_fundamentales()
-    print(f"   → {len(fundamentales)} empresas con datos")
+    print(f"   → {len(fundamentales)} empresas")
     print("🤖 Generando informe con Gemini...")
-    informe = generar_informe(macro, noticias, insiders, earnings, cambios, fundamentales)
+    informe = generar_informe(macro, noticias, insiders, earnings_prox, earnings_rep, cambios, fundamentales)
     print("📧 Enviando email...")
     enviar_email(informe)
     print("✅ Completado.")
