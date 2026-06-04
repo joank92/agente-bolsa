@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor
 import yfinance as yf
 import google.generativeai as genai
 
@@ -27,144 +28,403 @@ EMPRESAS_USA = {
     "MSFT": "Microsoft", "META": "Meta", "AMZN": "Amazon", "GOOGL": "Alphabet",
     "V": "Visa", "MA": "Mastercard", "SPGI": "S&P Global", "MCO": "Moody's",
     "MELI": "MercadoLibre", "BKNG": "Booking Holdings", "CPRT": "Copart",
-    "TMDX": "TransMedics", "WCN": "Waste Connections", "MCD": "McDonald's",
-    "AXP": "American Express", "ASTS": "AST SpaceMobile", "NVDA": "Nvidia",
-    "BRK-B": "Berkshire Hathaway",
+    "TMDX": "TransMedics", "NVDA": "Nvidia",
 }
 EMPRESAS_INTL = {
-    "CSU.TO": ("Constellation Software", "CA"),
-    "PNG.V":  ("Kraken Robotics", "CA"),
-    "AIR.PA": ("Airbus", "FR"),
-    "7974.T": ("Nintendo", "JP"),
-    "DNP.WA": ("Dino Polska", "PL"),
+    "CSU.TO":  ("Constellation Software", "CA"),
+    "PNG.V":   ("Kraken Robotics", "CA"),
+    "AIR.PA":  ("Airbus", "FR"),
+    "7974.T":  ("Nintendo", "JP"),
+    "DNP.WA":  ("Dino Polska", "PL"),
 }
-CRYPTO = {"BTC": "Bitcoin"}
 
 # ─────────────────────────────────────────────
-# WATCHLIST (punto 8)
+# WATCHLIST WIDE MOAT (Morningstar)
 # ─────────────────────────────────────────────
-WATCHLIST = {
-    "SAP":   "SAP SE", "AMD":   "AMD", "ORCL":  "Oracle",
-    "TSM":   "Taiwan Semiconductor", "BABA":  "Alibaba",
-    "FTNT":  "Fortinet", "PDD":   "PDD Holdings", "FICO":  "Fair Isaac",
-    "IBKR":  "Interactive Brokers", "UBER":  "Uber", "BX":    "Blackstone",
-    "UNH":   "UnitedHealth", "ROP":   "Roper Technologies", "LIN":   "Linde",
-    "BN":    "Brookfield", "TMO":   "Thermo Fisher", "LMT":   "Lockheed Martin",
-    "RACE":  "Ferrari", "BLK":   "BlackRock", "AAPL":  "Apple",
-    "NVO":   "Novo Nordisk ADR", "ADP":   "ADP", "ORLY":  "O'Reilly Automotive",
-    "NFLX":  "Netflix", "COST":  "Costco", "ODFL":  "Old Dominion",
-    "WMT":   "Walmart", "ADBE":  "Adobe", "NOW":   "ServiceNow",
-    "KKR":   "KKR", "TDG":   "TransDigm", "MSCI":  "MSCI",
-    "KNSL":  "Kinsale Capital", "FDS":   "FactSet", "YUMC":  "Yum China",
-    "KOF":   "Coca-Cola FEMSA", "HEI":   "Heico", "DPZ":   "Domino's Pizza",
-    "POOL":  "Pool Corp", "AZO":   "AutoZone", "DHR":   "Danaher",
-    "WM":    "Waste Management",
-    # Nuevos añadidos
-    "DOW":     "Dow Inc",
-    "NDAQ":    "Nasdaq",
-    "JD":      "JD.com",
-    "EXP":     "Eagle Materials",
-    "PEP":     "PepsiCo",
-    "AVGO":    "Broadcom",
-    # Internacionales
-    "RMS.PA":  "Hermès",
-    "MC.PA":   "LVMH",
-    "MONC.MI": "Moncler",
-    "WKL.AS":  "Wolters Kluwer",
-    "CNR.TO":  "Canadian National Railway",
-    "CCH.L":   "Coca-Cola HBC",
-    "ENX.PA":  "Euronext",
-    "TOI.V":   "Topicus.com",
-    "ATD.TO":  "Couche-Tard",
-    "ASML":    "ASML Holding",
-    "ITX.MC":  "Inditex",
-    "LSEG.L":  "London Stock Exchange Group",
-    "1211.HK": "BYD",
-    "0700.HK": "Tencent",
-    "TEQ.TO":  "Technion",
-    "JDG.L":   "Judges Scientific",
-    "NOVO-B.CO":"Novo Nordisk (Copenhague)",
-    "BZU.MI":  "Buzzi",
-    "OEM-B.ST":"OEM International",
-    "ACP.WA":  "Asseco Poland",
-    "LOUP.PA": "LDC",
+WATCHLIST_WIDE_MOAT = {
+    "AOS": "A.O. Smith",
+    "ABLZF": "ABB",
+    "ABBV": "AbbVie",
+    "ACN": "Accenture",
+    "ADBE": "Adobe",
+    "AVIFY": "Advanced Inforvice PCL",
+    "A": "Agilent Technologies",
+    "AIQUF": "Air Liquide",
+    "APD": "Air Products and Chemicals",
+    "ABNB": "Airbnb",
+    "AIPUY": "Airports Of Thailand",
+    "ALFVF": "Alfa Laval AB",
+    "BABAF": "Alibaba",
+    "ALLE": "Allegion",
+    "ALEGF": "Allegro.EU",
+    "MO": "Altria",
+    "AMZN": "Amazon.com",
+    "ABEV": "Ambev",
+    "AME": "AMETEK",
+    "AMGN": "Amgen",
+    "APH": "Amphenol",
+    "ADI": "Analog Devices",
+    "BUDFF": "Anheuser-Busch InBev/NV",
+    "ANSS": "Ansys",
+    "ANZGF": "ANZ",
+    "AAPL": "Apple",
+    "AMAT": "Applied Materials",
+    "EMBVF": "Arca ContinentalB de CV",
+    "ANET": "Arista Networks",
+    "ARM": "ARM",
+    "ASMXF": "ASM International",
+    "ASMLF": "ASML",
+    "ASAZY": "Assa Abloy AB",
+    "AZNCF": "AstraZeneca",
+    "ASXFF": "ASX",
+    "ATLCY": "Atlas Copco AB",
+    "ACKDF": "Auckland International Airport",
+    "ATDRF": "Auto Trader",
+    "ADSK": "Autodesk",
+    "ADP": "Automatic Data Processing",
+    "AZO": "AutoZone",
+    "BAESF": "BAE Systems",
+    "BAIDF": "Baidu",
+    "BK": "Bank of New York Mellon",
+    "BAC": "Bank of America",
+    "BESVF": "BEmiconductor Industries",
+    "BRBR": "BellRing Brands",
+    "BIO.B": "Bio-Rad Laboratories",
+    "BLK": "BlackRock",
+    "BA": "Boeing",
+    "BMBLF": "Brambles",
+    "BMY": "Bristol-Myers Squibb",
+    "BTAFF": "British American Tobacco",
+    "AVGO": "Broadcom",
+    "BR": "Broadridge Financial Solutions",
+    "BAM": "Brookfield Asset Management",
+    "BF.A": "Brown-Forman",
+    "DOOO": "BRP Shs Subord.Voting",
+    "BVRDF": "Bureau Veritas",
+    "CHRW": "C.H. Robinson Worldwide",
+    "CDNS": "Cadence Design Systems",
+    "CNI": "Canadian National Railway",
+    "CP": "Canadian Pacific Kansas City",
+    "CKHGY": "Capitec Bank",
+    "CSL": "Carlisle Companies",
+    "CAT": "Caterpillar",
+    "CBOE": "Cboe Global Markets",
+    "SCHW": "Charles Schwab",
+    "CHE": "Chemed",
+    "LNG": "Cheniere Energy",
+    "CQP": "Cheniere Energy Partners LP",
+    "CMG": "Chipotle Mexican Grill",
+    "CTAS": "Cintas",
+    "CSCO": "Cisco Systems",
+    "CCKRF": "Clicks",
+    "CLX": "Clorox",
+    "CME": "CME",
+    "KO": "Coca-Cola",
+    "COCSF": "Coca-Cola FemsaB de CVries L",
+    "CHEOF": "Cochlear",
+    "CL": "Colgate-Palmolive",
+    "CLPBF": "Coloplast AS",
+    "CBAUF": "Commonwealth Bank of Australia",
+    "CFRHF": "Compagnie Financiere Richemont",
+    "CMSQF": "Computershare",
+    "STZ": "Constellation Brands",
+    "CTVA": "Corteva",
+    "CSGP": "CoStar",
+    "COST": "Costco Wholesale",
+    "CSX": "CSX",
+    "DAIUF": "Daifuku",
+    "DHR": "Danaher",
+    "DUAVF": "Dassault Aviation",
+    "DASTF": "Dassault Systemes",
+    "DE": "Deere &",
+    "DETRF": "Deterra Royalties",
+    "DBOEF": "Deutsche Boerse",
+    "DGEAF": "Diageo",
+    "DLMAF": "Dollarama",
+    "DPZ": "Domino's Pizza",
+    "DSMFF": "DSM Firmenich",
+    "ETN": "Eaton",
+    "ECL": "Ecolab",
+    "EDNMY": "Edenred",
+    "EKTAY": "Elekta AB",
+    "LLY": "Eli Lilly and",
+    "EMR": "Emerson Electric",
+    "EMSHF": "Ems-Chemie",
+    "EDVGF": "Endeavour",
+    "EPD": "Enterprise Products Partners LP",
+    "EPOAY": "Epiroc AB (Representing",
+    "EPIPF": "Epiroc AB Share B",
+    "EFX": "Equifax",
+    "ESLOF": "Essilorluxottica",
+    "ETSY": "Etsy",
+    "EXLS": "ExlService",
+    "EXPD": "Expeditors International of Washington",
+    "EXPGF": "Experian",
+    "FICO": "Fair Isaac",
+    "FANUF": "Fanuc",
+    "FRCOY": "Fast Retailing",
+    "FAST": "Fastenal",
+    "RACE": "Ferrari",
+    "FER": "Ferrovial",
+    "FNCHF": "FINEOS Chess Depository Interest",
+    "FTNT": "Fortinet",
+    "FNV": "Franco-Nevada",
+    "IT": "Gartner",
+    "GE": "GE Aerospace",
+    "GEHC": "GE HealthCare Technologies",
+    "GEAGF": "GEA",
+    "GBERF": "Geberit",
+    "GD": "General Dynamics",
+    "GILD": "Gilead Sciences",
+    "GVDBF": "Givaudan",
+    "GGG": "Graco",
+    "GLAXF": "GSK",
+    "GWRE": "Guidewire Software",
+    "HLNCF": "Haleon",
+    "HSYDF": "Harmonicive Systems",
+    "HINKF": "Heineken",
+    "HESAF": "Hermes International",
+    "HLT": "Hilton Worldwide",
+    "HON": "Honeywell International",
+    "HKXCF": "Hong Kong Exchanges and Clearing",
+    "HSHZY": "Hoshizaki",
+    "HLI": "Houlihan Lokey",
+    "HWM": "Howmet Aerospace",
+    "HOCPF": "Hoya",
+    "HUBB": "Hubbell",
+    "HII": "Huntington Ingalls Industries",
+    "IEX": "IDEX",
+    "IDXX": "IDEXX Laboratories",
+    "ITW": "Illinois Tool Works",
+    "IMBBF": "Imperial Brands",
+    "IDEXY": "Industria De Diseno Textil",
+    "IBKR": "Interactive Brokers",
+    "ICE": "Intercontinental Exchange",
+    "ICHGF": "InterContinental Hotels",
+    "IFF": "International Flavors & Fragrances",
+    "IKTSF": "Intertek",
+    "INTU": "Intuit",
+    "ISRG": "Intuitive Surgical",
+    "IVTBF": "Investment AB Latour",
+    "ITT": "ITT",
+    "JKHY": "Jack Henry & Associates",
+    "JHX": "James Hardie Industries",
+    "OSCUF": "Japan Exchange",
+    "JAPAF": "Japan Tobacco",
+    "JDCMF": "JD.com",
+    "JNJ": "Johnson & Johnson",
+    "JPM": "JPMorgan Chase &",
+    "JBARF": "Julius Baer Gruppe",
+    "KAOCF": "Kao",
+    "KVUE": "Kenvue",
+    "KEYS": "Keysight Technologies",
+    "KIKOF": "Kikkoman",
+    "KLAC": "KLA",
+    "KNYJY": "KONE Oyj",
+    "NSKFF": "Kongsberg Gruppen ASA",
+    "RYLPF": "Koninklijke Philips",
+    "KUBTF": "Kubota",
+    "LRLCF": "L'Oreal",
+    "LRCX": "Lam Research",
+    "LSTR": "Landstar System",
+    "LTOUF": "Larsen & Toubro",
+    "LFCBY": "Lifco AB",
+    "LIN": "Linde",
+    "LMT": "Lockheed Martin",
+    "LDNXF": "London Stock Exchange",
+    "LOW": "Lowe's Companies",
+    "LVMHF": "Lvmh Moet Hennessy Louis Vuitton",
+    "YAHOF": "LY",
+    "MANH": "Manhattan Associates",
+    "MKTX": "MarketAxess",
+    "MAR": "Marriott International",
+    "MAS": "Masco",
+    "MKC": "McCormick &",
+    "MLSPF": "Melrose Industries",
+    "MRK": "Merck &",
+    "MCHP": "Microchip Technology",
+    "MDLZ": "Mondelez International",
+    "MPWR": "Monolithic Power Systems",
+    "MSI": "Motorola Solutions",
+    "MSCI": "MSCI",
+    "MTUAF": "MTU Aero Engines",
+    "MRAAF": "Murata Manufacturing",
+    "NCTKF": "Nabtesco",
+    "NAUBF": "National Australia Bank",
+    "NSRGF": "Nestle",
+    "NYT": "New York Times",
+    "NXGPF": "Next",
+    "NKE": "Nike",
+    "NURAF": "Nomura Research Institute",
+    "NDSN": "Nordson",
+    "NSC": "Norfolk Southern",
+    "NTRS": "Northern Trust",
+    "NOC": "Northrop Grumman",
+    "NVSEF": "Novartis",
+    "NONOF": "Novo Nordisk AS",
+    "NVZMY": "Novonesis (Novozymes) B",
+    "NXPI": "NXPmiconductors",
+    "ORLY": "O'Reilly Automotive",
+    "OBIIF": "OBIC",
+    "OMRNF": "OMRON",
+    "ORCL": "Oracle",
+    "OCLCF": "Oracle Japan",
+    "OLCLF": "Oriental Land",
+    "OTIS": "Otis Worldwide",
+    "PANW": "Palo Alto Networks",
+    "PAYX": "Paychex",
+    "PEP": "PepsiCo",
+    "PDRDF": "Pernod Ricard",
+    "PFE": "Pfizer",
+    "PM": "Philip Morris International",
+    "PII": "Polaris",
+    "PMRTY": "Pop Mart International",
+    "PTAUY": "Port of Tauranga",
+    "PG": "Procter & Gamble",
+    "PBCRF": "PT Bank Central Asia Tbk",
+    "RPGRF": "REA",
+    "RBGPF": "Reckitt Benckiser",
+    "RICFY": "Recordati SpA",
+    "RLXXF": "RELX",
+    "RSG": "Republicrvices",
+    "RNMBF": "Rheinmetall",
+    "RHHBF": "Roche",
+    "ROK": "Rockwell Automation",
+    "ROL": "Rollins",
+    "ROP": "Roper Technologies",
+    "ROST": "Ross Stores",
+    "RY": "Royal Bank of Canada",
+    "RGLD": "Royal Gold",
+    "RTX": "RTX",
+    "SAABY": "Saab AB",
+    "SAFRF": "Safran",
+    "CRM": "Salesforce",
+    "SDVKF": "Sandvik AB",
+    "SNYNF": "Sanofi",
+    "SAP": "SAP",
+    "SARTF": "Sartorius",
+    "SDMHF": "Sartorius Stedim Biotech",
+    "SHLRF": "Schindler",
+    "SBGSF": "Schneider Electric",
+    "NOW": "ServiceNow",
+    "SGSOF": "SGS",
+    "SHW": "Sherwin-Williams",
+    "SHMDF": "Shimano",
+    "SHOP": "Shopify",
+    "SMAWF": "Siemens",
+    "SMMNY": "Siemens Healthineers",
+    "SPXCF": "Singapore Exchange",
+    "SMGKF": "Smiths",
+    "SNEJF": "Sony",
+    "SCCO": "Southern Copper",
+    "SPXSF": "Spirax",
+    "SBUX": "Starbucks",
+    "STT": "State Street",
+    "SYK": "Stryker",
+    "SYIEF": "Symrise",
+    "SNPS": "Synopsys",
+    "SYY": "Sysco",
+    "TSM": "Taiwanmiconductor Manufacturing",
+    "THNOF": "Technology One",
+    "TCTZF": "Tencent",
+    "TER": "Teradyne",
+    "TXN": "Texas Instruments",
+    "TXRH": "Texas Roadhouse",
+    "THLEF": "Thales",
+    "CPB": "The Campbell's",
+    "DSGX": "The Descartes Systems",
+    "EL": "The Estee Lauder Companies",
+    "HSY": "The Hershey",
+    "HD": "The Home Depot",
+    "LTRCF": "The Lottery",
+    "TD": "The Toronto-Dominion Bank",
+    "DIS": "The Walt Disney",
+    "TMO": "Thermo Fisher Scientific",
+    "TJX": "TJX Companies",
+    "TOELF": "Tokyo Electron",
+    "TSCO": "Tractor Supply",
+    "TW": "Tradeweb Markets",
+    "TDG": "TransDigm",
+    "TRU": "TransUnion",
+    "TRAUF": "Transurban",
+    "TYL": "Tyler Technologies",
+    "USB": "U.S. Bancorp",
+    "UNCHF": "Unicharm",
+    "UNLYF": "Unilever",
+    "UNP": "Union Pacific",
+    "UPS": "United Parcelrvice",
+    "UMGNF": "Universal Music",
+    "VACNY": "VAT",
+    "VEEV": "Veeva Systems",
+    "VLTO": "Veralto",
+    "OEZVY": "Verbund",
+    "VRSN": "VeriSign",
+    "VRSK": "Verisk Analytics",
+    "GWW": "W.W. Grainger",
+    "WMT": "Walmart",
+    "WRTBF": "Wartsila",
+    "WM": "Waste Management",
+    "WAT": "Waters",
+    "WEGZY": "Weg",
+    "WFC": "Wells Fargo &",
+    "WFAFF": "Wesfarmers",
+    "WST": "West Pharmaceuticalrvices",
+    "WEBNF": "Westpac Banking",
+    "WPM": "Wheaton Precious Metals",
+    "WOLTF": "Wolters Kluwer",
+    "WOLWF": "Woolworths",
+    "WDAY": "Workday",
+    "YASKF": "YASKAWA Electric",
+    "YUM": "Yum Brands",
+    "YUMC": "Yum China",
+    "ZBH": "Zimmer Biomet",
+    "ZTS": "Zoetis",
+    "SATLF": "Zozo",
 }
 
-QUERIES_EMPRESA = {
-    "Microsoft":              "Microsoft MSFT",
-    "Meta":                   "Meta Platforms",
-    "Amazon":                 "Amazon AMZN",
-    "Alphabet":               "Alphabet Google",
-    "Visa":                   "Visa Inc payments",
-    "Mastercard":             "Mastercard payments",
-    "S&P Global":             "S&P Global SPGI",
-    "Moody's":                "Moody's MCO",
-    "MercadoLibre":           "MercadoLibre",
-    "Booking Holdings":       "Booking Holdings",
-    "Copart":                 "Copart auctions",
-    "TransMedics":            "TransMedics organ",
-    "Waste Connections":      "Waste Connections",
-    "McDonald's":             "McDonald's MCD",
-    "American Express":       "American Express AXP",
-    "AST SpaceMobile":        "AST SpaceMobile",
-    "Nvidia":                 "Nvidia chips",
-    "Berkshire Hathaway":     "Berkshire Hathaway Buffett",
-    "Constellation Software": "Constellation Software CSU",
-    "Kraken Robotics":        "Kraken Robotics",
-    "Airbus":                 "Airbus aerospace",
-    "Nintendo":               "Nintendo Switch",
-    "Dino Polska":            "Dino Polska",
-    "Bitcoin":                "Bitcoin BTC",
-}
+# Añadir las 5 ex-cartera al watchlist
+WATCHLIST_WIDE_MOAT["WCN"]  = "Waste Connections"
+WATCHLIST_WIDE_MOAT["MCD"]  = "McDonald's"
+WATCHLIST_WIDE_MOAT["AXP"]  = "American Express"
+WATCHLIST_WIDE_MOAT["BRK-B"] = "Berkshire Hathaway"
+WATCHLIST_WIDE_MOAT["ASTS"] = "AST SpaceMobile"
 
-# Dominios financieros de calidad
+# Forzar que las 5 ex-cartera puedan aparecer en el punto 6 (top 10)
+# WCN, MCD, AXP, BRK-B son Wide Moat según Morningstar. ASTS NO es wide moat
+# pero se incluye explícitamente por petición del usuario.
+TICKERS_FORZAR_PUNTO_6 = {"WCN", "MCD", "AXP", "BRK-B", "ASTS"}
+
+# Set de tickers Wide Moat (para filtrar el punto 6)
+TICKERS_WIDE_MOAT = set(WATCHLIST_WIDE_MOAT.keys()) | TICKERS_FORZAR_PUNTO_6
+
+# Combinar con la watchlist anterior del usuario (incluir RACE, KKR, etc. que también son wide moat)
+WATCHLIST = WATCHLIST_WIDE_MOAT
+
 DOMINIOS_FIN = "bloomberg.com,reuters.com,ft.com,wsj.com,cnbc.com,seekingalpha.com,marketwatch.com,barrons.com,economist.com,investors.com,fool.com"
+HEADERS_WEB  = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-HEADERS_WEB = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-
-# Traducción de grados de analistas al español
 TRADUCCION_GRADO = {
-    "buy":          "Comprar",
-    "strong buy":   "Comprar fuerte",
-    "outperform":   "Sobresperar",
-    "overweight":   "Sobreponderar",
-    "hold":         "Mantener",
-    "neutral":      "Neutral",
-    "market perform":"Rendimiento de mercado",
-    "underperform": "Infraponderar",
-    "underweight":  "Infraponderar",
-    "sell":         "Vender",
-    "strong sell":  "Vender fuerte",
-    "reduce":       "Reducir",
-    "accumulate":   "Acumular",
-    "equal-weight": "Peso neutral",
-    "equal weight": "Peso neutral",
-    "in-line":      "En línea",
+    "buy":"Comprar","strong buy":"Comprar fuerte","outperform":"Sobresperar",
+    "overweight":"Sobreponderar","hold":"Mantener","neutral":"Neutral",
+    "market perform":"Rend. mercado","underperform":"Infraponderar",
+    "underweight":"Infraponderar","sell":"Vender","strong sell":"Vender fuerte",
+    "reduce":"Reducir","accumulate":"Acumular","equal-weight":"Peso neutral",
+    "equal weight":"Peso neutral","in-line":"En línea","perform":"Rend. neutral",
 }
-
 TRADUCCION_ACCION = {
-    "up":       "Subida de recomendación",
-    "down":     "Bajada de recomendación",
-    "main":     "Mantenida",
-    "init":     "Iniciada cobertura",
-    "reit":     "Reiterada",
-    "upgr":     "Subida de recomendación",
-    "downgr":   "Bajada de recomendación",
+    "up":"⬆️ Subida","down":"⬇️ Bajada","main":"Mantenida",
+    "init":"Inicio cobertura","reit":"Reiterada",
 }
 
 
 def traducir_grado(g):
-    if not g:
-        return ""
-    g_low = str(g).lower().strip()
-    return TRADUCCION_GRADO.get(g_low, g)
+    if not g: return ""
+    return TRADUCCION_GRADO.get(str(g).lower().strip(), g)
 
 
 def traducir_accion(a):
-    if not a:
-        return ""
-    a_low = str(a).lower().strip()
-    return TRADUCCION_ACCION.get(a_low, a)
+    if not a: return ""
+    return TRADUCCION_ACCION.get(str(a).lower().strip(), a)
 
 
 # ═════════════════════════════════════════════
@@ -172,29 +432,26 @@ def traducir_accion(a):
 # ═════════════════════════════════════════════
 def fetch_google_news(query, dias=3, max_items=6):
     try:
-        q_codificada = urllib.parse.quote(query)
-        url = f"https://news.google.com/rss/search?q={q_codificada}+when:{dias}d&hl=en-US&gl=US&ceid=US:en"
+        q = urllib.parse.quote(query)
+        url = f"https://news.google.com/rss/search?q={q}+when:{dias}d&hl=en-US&gl=US&ceid=US:en"
         r = requests.get(url, headers=HEADERS_WEB, timeout=10)
-        if r.status_code != 200:
-            return []
+        if r.status_code != 200: return []
         soup = BeautifulSoup(r.text, "xml")
         items = soup.find_all("item")[:max_items]
-        resultados = []
+        out = []
         for it in items:
             titulo  = it.find("title").get_text(strip=True) if it.find("title") else ""
-            link    = it.find("link").get_text(strip=True)  if it.find("link") else ""
-            pub     = it.find("pubDate").get_text(strip=True) if it.find("pubDate") else ""
             source  = it.find("source").get_text(strip=True) if it.find("source") else ""
             desc    = it.find("description").get_text(strip=True) if it.find("description") else ""
             desc_clean = BeautifulSoup(desc, "html.parser").get_text(" ", strip=True)[:300]
-            resultados.append({"titulo": titulo, "fuente": source, "fecha": pub, "url": link, "descripcion": desc_clean})
-        return resultados
+            out.append({"titulo": titulo, "fuente": source, "descripcion": desc_clean})
+        return out
     except Exception:
         return []
 
 
 # ═════════════════════════════════════════════
-# 1. MACRO — solo fuentes financieras de calidad
+# 1. MACRO
 # ═════════════════════════════════════════════
 def get_macro_data():
     noticias = []
@@ -206,21 +463,17 @@ def get_macro_data():
         "recession GDP growth outlook",
     ]
     desde = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
-    # NewsAPI con dominios financieros premium
     for q in queries_macro:
         try:
-            url = (
-                f"https://newsapi.org/v2/everything?q={urllib.parse.quote(q)}"
-                f"&domains={DOMINIOS_FIN}"
-                f"&from={desde}&language=en&sortBy=publishedAt&pageSize=5&apiKey={NEWS_API_KEY}"
-            )
+            url = (f"https://newsapi.org/v2/everything?q={urllib.parse.quote(q)}"
+                   f"&domains={DOMINIOS_FIN}&from={desde}&language=en"
+                   f"&sortBy=publishedAt&pageSize=5&apiKey={NEWS_API_KEY}")
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 for a in r.json().get("articles", []):
                     noticias.append(f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}")
         except Exception:
             continue
-    # Google News como complemento
     for q in queries_macro:
         for n in fetch_google_news(q, dias=3, max_items=3):
             noticias.append(f"[{n['fuente']}] {n['titulo']} — {n['descripcion']}")
@@ -228,383 +481,285 @@ def get_macro_data():
 
 
 # ═════════════════════════════════════════════
-# 2. NOTICIAS POR EMPRESA — fuentes financieras
+# DESCARGA EN PARALELO DE DATOS YFINANCE
 # ═════════════════════════════════════════════
-def get_noticias_empresas():
-    resultado = {}
-    desde = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
-    todas = (
-        list(EMPRESAS_USA.values()) +
-        [v[0] for v in EMPRESAS_INTL.values()] +
-        list(CRYPTO.values())
-    )
-    for nombre in todas:
-        items = []
-        query = QUERIES_EMPRESA.get(nombre, nombre)
-        # NewsAPI con dominios financieros
+def descargar_datos_ticker(ticker_nombre):
+    """Descarga info + upgrades_downgrades de un ticker. Devuelve dict."""
+    ticker, nombre = ticker_nombre
+    resultado = {
+        "ticker": ticker, "nombre": nombre,
+        "info": None, "upgrades": None, "error": None
+    }
+    try:
+        stock = yf.Ticker(ticker)
+        resultado["info"] = stock.info
         try:
-            url = (
-                f"https://newsapi.org/v2/everything?q={urllib.parse.quote(query)}"
-                f"&domains={DOMINIOS_FIN}"
-                f"&from={desde}&language=en&sortBy=publishedAt&pageSize=4&apiKey={NEWS_API_KEY}"
-            )
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                for a in r.json().get("articles", []):
-                    items.append(f"[{a.get('source',{}).get('name','')}] {a.get('title','')} — {a.get('description','')}")
+            resultado["upgrades"] = stock.upgrades_downgrades
         except Exception:
-            pass
-        # Google News finance — buscar con sufijo "stock" o "earnings" para sesgo financiero
-        for n in fetch_google_news(f"{query} stock", dias=3, max_items=4):
-            items.append(f"[{n['fuente']}] {n['titulo']} — {n['descripcion']}")
-        # Deduplicar
-        vistos, items_unicos = set(), []
-        for it in items:
-            clave = it[:80].lower()
-            if clave not in vistos:
-                vistos.add(clave)
-                items_unicos.append(it)
-        resultado[nombre] = items_unicos[:6]
+            resultado["upgrades"] = None
+    except Exception as e:
+        resultado["error"] = str(e)
     return resultado
 
 
+def descargar_todos_los_datos(tickers_cartera, tickers_watchlist):
+    """Descarga datos en paralelo para todos los tickers."""
+    lista = []
+    for t, n in tickers_cartera.items():
+        lista.append((t, n))
+    for t, n in tickers_watchlist.items():
+        if t not in tickers_cartera:
+            lista.append((t, n))
+
+    print(f"   Descargando {len(lista)} tickers en paralelo...")
+    datos = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        for resultado in executor.map(descargar_datos_ticker, lista):
+            datos[resultado["ticker"]] = resultado
+    return datos
+
+
 # ═════════════════════════════════════════════
-# 3. INSIDERS — yfinance SIN filtros agresivos
+# 3. CAMBIOS DE ANALISTAS (30 días)
 # ═════════════════════════════════════════════
-def get_insiders():
-    resultados = []
+def procesar_cambios_analistas(datos_descargados):
+    cambios_por_ticker = {}
     hoy = datetime.now().date()
     hace_30 = hoy - timedelta(days=30)
-    for ticker, nombre in EMPRESAS_USA.items():
-        try:
-            stock = yf.Ticker(ticker)
-            trans = stock.insider_transactions
-            if trans is None or len(trans) == 0:
-                continue
-            for _, row in trans.iterrows():
-                fecha_raw = row.get("Start Date") if "Start Date" in row else row.get("Date")
-                if fecha_raw is None:
-                    continue
-                try:
-                    fecha_date = fecha_raw.date() if hasattr(fecha_raw, "date") else datetime.strptime(str(fecha_raw)[:10], "%Y-%m-%d").date()
-                except Exception:
-                    continue
-                if fecha_date < hace_30 or fecha_date > hoy:
-                    continue
 
-                texto = (str(row.get("Text", "")) + " " + str(row.get("Transaction", ""))).lower()
-                # Filtrar SOLO ventas claras — todo lo demás se muestra
-                if "sale" in texto or "sell" in texto or "disposition" in texto:
-                    continue
-
-                insider  = row.get("Insider", "")
-                cargo    = row.get("Position", "")
-                shares   = row.get("Shares", "")
-                valor    = row.get("Value", "")
-                trans_type = row.get("Transaction", "") or row.get("Text", "")
-
-                resultados.append(
-                    f"🟢 {nombre} ({ticker}) | {fecha_date.strftime('%d/%m/%Y')} | "
-                    f"{insider} ({cargo}) | {trans_type} | {shares} acciones | Valor: {valor}"
-                )
-        except Exception:
+    for ticker, d in datos_descargados.items():
+        ud = d.get("upgrades")
+        if ud is None or len(ud) == 0:
             continue
-    return resultados if resultados else ["Sin transacciones de insiders detectadas en los últimos 30 días."]
-
-
-# ═════════════════════════════════════════════
-# 5. EARNINGS — múltiples métodos + scraping Yahoo
-# ═════════════════════════════════════════════
-def scrape_yahoo_earnings(ticker):
-    """Intenta obtener fecha de earnings desde Yahoo Finance vía scraping."""
-    try:
-        url = f"https://finance.yahoo.com/calendar/earnings?symbol={ticker}"
-        r = requests.get(url, headers=HEADERS_WEB, timeout=10)
-        if r.status_code != 200:
-            return None
-        soup = BeautifulSoup(r.text, "html.parser")
-        # Yahoo muestra las fechas en una tabla
-        tabla = soup.find("table")
-        if not tabla:
-            return None
-        filas = tabla.find_all("tr")
-        for fila in filas[1:3]:  # primera fila de datos
-            celdas = fila.find_all("td")
-            if len(celdas) >= 3:
-                fecha_text = celdas[2].get_text(strip=True)
-                try:
-                    # Formato típico: "Jul 23, 2026, 4:00 PM EDT"
-                    fecha = datetime.strptime(fecha_text.split(",")[0] + "," + fecha_text.split(",")[1], "%b %d, %Y")
-                    return fecha.date()
-                except Exception:
-                    continue
-        return None
-    except Exception:
-        return None
-
-
-def get_earnings_calendario():
-    proximos = []
-    reportados = []
-    hoy = datetime.now().date()
-    en_30 = hoy + timedelta(days=30)
-    hace_7 = hoy - timedelta(days=7)
-
-    tickers_cartera = list(EMPRESAS_USA.keys()) + list(EMPRESAS_INTL.keys())
-    nombres_cartera = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
-
-    for ticker in tickers_cartera:
-        nombre = nombres_cartera.get(ticker, ticker)
-        fechas_encontradas = []
-
-        try:
-            stock = yf.Ticker(ticker)
-
-            # Método 1: calendar
+        nombre = d["nombre"]
+        cambios = []
+        for idx, row in ud.iterrows():
             try:
-                cal = stock.calendar
-                if cal and isinstance(cal, dict):
-                    ed = cal.get("Earnings Date")
-                    if ed:
-                        if isinstance(ed, list):
-                            for e in ed:
-                                if hasattr(e, 'date'):
-                                    fechas_encontradas.append(e.date())
-                        elif hasattr(ed, 'date'):
-                            fechas_encontradas.append(ed.date())
+                fecha_date = idx.date() if hasattr(idx, 'date') else datetime.strptime(str(idx)[:10], "%Y-%m-%d").date()
             except Exception:
-                pass
-
-            # Método 2: earnings_dates
-            try:
-                ed_df = stock.earnings_dates
-                if ed_df is not None and len(ed_df) > 0:
-                    for idx in ed_df.index:
-                        if hasattr(idx, 'date'):
-                            fechas_encontradas.append(idx.date())
-            except Exception:
-                pass
-
-            # Método 3: scraping Yahoo si no hay nada
-            if not fechas_encontradas:
-                yahoo_date = scrape_yahoo_earnings(ticker)
-                if yahoo_date:
-                    fechas_encontradas.append(yahoo_date)
-        except Exception:
-            continue
-
-        for f in fechas_encontradas:
-            if hoy <= f <= en_30:
-                linea = f"📅 {nombre} ({ticker}) — {f.strftime('%d/%m/%Y')}"
-                if linea not in proximos:
-                    proximos.append(linea)
-            elif hace_7 <= f < hoy:
-                linea = f"✅ {nombre} ({ticker}) — reportó el {f.strftime('%d/%m/%Y')}"
-                if linea not in reportados:
-                    reportados.append(linea)
-
-    return proximos, reportados
-
-
-# ═════════════════════════════════════════════
-# 6. CAMBIOS DE ANALISTAS — TRADUCIDOS AL ESPAÑOL
-# ═════════════════════════════════════════════
-def get_cambios_analistas():
-    resultados = []
-    hoy = datetime.now().date()
-    hace_15 = hoy - timedelta(days=15)
-
-    tickers_cartera = list(EMPRESAS_USA.keys()) + list(EMPRESAS_INTL.keys())
-    nombres_cartera = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
-
-    for ticker in tickers_cartera:
-        try:
-            stock = yf.Ticker(ticker)
-            ud = stock.upgrades_downgrades
-            if ud is None or len(ud) == 0:
                 continue
-            nombre = nombres_cartera.get(ticker, ticker)
-            for idx, row in ud.iterrows():
-                try:
-                    fecha_date = idx.date() if hasattr(idx, 'date') else datetime.strptime(str(idx)[:10], "%Y-%m-%d").date()
-                except Exception:
-                    continue
-                if fecha_date < hace_15 or fecha_date > hoy:
-                    continue
-                firma = row.get("Firm", "")
-                desde_g = traducir_grado(row.get("FromGrade", ""))
-                hasta_g = traducir_grado(row.get("ToGrade", ""))
-                accion  = traducir_accion(row.get("Action", ""))
+            if fecha_date < hace_30 or fecha_date > hoy:
+                continue
+            firma   = row.get("Firm", "")
+            desde_g = traducir_grado(row.get("FromGrade", ""))
+            hasta_g = traducir_grado(row.get("ToGrade", ""))
+            accion  = traducir_accion(row.get("Action", ""))
+            cambios.append({
+                "fecha": fecha_date, "firma": firma,
+                "desde": desde_g, "hasta": hasta_g, "accion": accion,
+                "nombre": nombre, "ticker": ticker
+            })
+        if cambios:
+            cambios_por_ticker[ticker] = cambios
+    return cambios_por_ticker
 
-                if desde_g and hasta_g:
-                    linea = f"📊 {nombre} ({ticker}) | {fecha_date.strftime('%d/%m/%Y')} | {firma} | {accion}: {desde_g} → {hasta_g}"
-                elif hasta_g:
-                    linea = f"📊 {nombre} ({ticker}) | {fecha_date.strftime('%d/%m/%Y')} | {firma} | {accion}: {hasta_g}"
-                else:
-                    linea = f"📊 {nombre} ({ticker}) | {fecha_date.strftime('%d/%m/%Y')} | {firma} | {accion}"
-                resultados.append(linea)
-        except Exception:
+
+def formatear_cambios_para_seccion(cambios_por_ticker, solo_cartera_tickers=None):
+    """Si solo_cartera_tickers se pasa, solo formatea esos. Sino, todos."""
+    lineas = []
+    for ticker, cambios in cambios_por_ticker.items():
+        if solo_cartera_tickers and ticker not in solo_cartera_tickers:
             continue
-
-    # Complemento Google News (sólo si yfinance da poco)
-    if len(resultados) < 5:
-        nombres_lista = list(EMPRESAS_USA.values()) + [v[0] for v in EMPRESAS_INTL.values()]
-        for nombre in nombres_lista[:10]:
-            q = f"{nombre} price target upgrade"
-            for n in fetch_google_news(q, dias=15, max_items=1):
-                resultados.append(f"[{n['fuente']}] {n['titulo']} — {n['descripcion']}")
-
-    # Deduplicar
-    vistos, unicos = set(), []
-    for r in resultados:
-        clave = r[:80].lower()
-        if clave not in vistos:
-            vistos.add(clave)
-            unicos.append(r)
-    return unicos[:30]
+        for c in cambios:
+            if c["desde"] and c["hasta"]:
+                linea = f"📊 **{c['nombre']} ({ticker})** | {c['fecha'].strftime('%d/%m/%Y')} | {c['firma']} | {c['accion']}: {c['desde']} → {c['hasta']}"
+            elif c["hasta"]:
+                linea = f"📊 **{c['nombre']} ({ticker})** | {c['fecha'].strftime('%d/%m/%Y')} | {c['firma']} | {c['accion']}: {c['hasta']}"
+            else:
+                linea = f"📊 **{c['nombre']} ({ticker})** | {c['fecha'].strftime('%d/%m/%Y')} | {c['firma']} | {c['accion']}"
+            lineas.append(linea)
+    return lineas if lineas else ["Sin cambios de analistas en los últimos 30 días."]
 
 
 # ═════════════════════════════════════════════
-# 7 y 8. FUNDAMENTALES
+# 4 y 5. FUNDAMENTALES
 # ═════════════════════════════════════════════
-def get_datos_fundamentales(tickers_dict):
+def procesar_fundamentales(datos_descargados, tickers_filtro):
+    """Devuelve lista de dicts con todos los datos solo para tickers del filtro."""
     resultados = []
-    for ticker, nombre in tickers_dict.items():
+    for ticker, d in datos_descargados.items():
+        if ticker not in tickers_filtro:
+            continue
+        info = d.get("info")
+        if not info:
+            continue
         try:
-            info          = yf.Ticker(ticker).info
             precio        = info.get("regularMarketPrice") or info.get("currentPrice")
             pe_actual     = info.get("trailingPE")
             pe_forward    = info.get("forwardPE")
             precio_target = info.get("targetMeanPrice")
             moneda        = info.get("currency", "USD")
+            rec_mean      = info.get("recommendationMean")  # 1=Strong Buy, 5=Strong Sell
+            num_analistas = info.get("numberOfAnalystOpinions") or 0
+
             if not precio:
                 continue
+
+            # FILTRO: excluir empresas con valoración excesiva
+            # P/E actual > 40 o P/E Forward > 30 → no mostrar
+            if pe_actual is not None and pe_actual > 40:
+                continue
+            if pe_forward is not None and pe_forward > 30:
+                continue
+
             upside = ((precio_target - precio) / precio * 100) if precio_target else None
-            linea = f"**{nombre} ({ticker})** | Precio: {precio:.2f} {moneda}"
-            if pe_actual:
-                linea += f" | P/E: {pe_actual:.1f}x"
-            if pe_forward:
-                linea += f" | P/E Fwd: {pe_forward:.1f}x"
-            if precio_target:
-                linea += f" | Target: {precio_target:.2f}"
-            if upside is not None:
-                emoji = "🟢" if upside > 0 else "🔴"
-                linea += f" | Upside: {emoji} {upside:+.1f}%"
-            resultados.append((upside if upside is not None else -999, linea))
+
+            resultados.append({
+                "ticker": ticker, "nombre": d["nombre"],
+                "precio": precio, "pe_actual": pe_actual, "pe_forward": pe_forward,
+                "target": precio_target, "moneda": moneda, "upside": upside,
+                "rec_mean": rec_mean, "num_analistas": num_analistas
+            })
         except Exception:
             continue
-    resultados.sort(key=lambda x: x[0], reverse=True)
-    return [l for _, l in resultados]
+    return resultados
 
 
-def get_fundamentales_cartera():
-    tickers = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
-    return get_datos_fundamentales(tickers)
+def formatear_linea_fundamental(d):
+    linea = f"**{d['nombre']} ({d['ticker']})** | Precio: {d['precio']:.2f} {d['moneda']}"
+    if d['pe_actual']:
+        linea += f" | P/E: {d['pe_actual']:.1f}x"
+    if d['pe_forward']:
+        linea += f" | P/E Fwd: {d['pe_forward']:.1f}x"
+    if d['target']:
+        linea += f" | Target: {d['target']:.2f}"
+    if d['upside'] is not None:
+        emoji = "🟢" if d['upside'] > 0 else "🔴"
+        linea += f" | Upside: {emoji} {d['upside']:+.1f}%"
+    return linea
 
 
-def get_fundamentales_watchlist():
-    return get_datos_fundamentales(WATCHLIST)
+def formatear_seccion_fundamentales(datos, top_n=None):
+    ordenados = sorted(datos, key=lambda x: x['upside'] if x['upside'] is not None else -999, reverse=True)
+    if top_n:
+        ordenados = ordenados[:top_n]
+    return [formatear_linea_fundamental(d) for d in ordenados]
 
 
 # ═════════════════════════════════════════════
-# GEMINI — INFORME
+# 6. TOP 10 OPORTUNIDADES (Wide Moat + ≥25% upside + rec favorable)
 # ═════════════════════════════════════════════
-def generar_informe(macro, noticias_empresas, insiders, earnings_proximos, earnings_reportados, cambios_analistas, fund_cartera, fund_watchlist):
+def get_top_oportunidades(datos_cartera, datos_watchlist, cambios_por_ticker, top=10, min_upside=25):
+    """
+    Filtros:
+    - Ticker debe estar en TICKERS_WIDE_MOAT
+    - upside >= min_upside
+    - recommendationMean <= 2.5 (consenso favorable, sin Sells significativos)
+    - número mínimo de analistas: 3 para que sea fiable
+    """
+    todos = datos_cartera + datos_watchlist
+
+    elegibles = []
+    for d in todos:
+        # Filtro 1: Wide Moat
+        if d['ticker'] not in TICKERS_WIDE_MOAT:
+            continue
+        # Filtro 2: upside
+        if d['upside'] is None or d['upside'] < min_upside:
+            continue
+        # Filtro 3: recomendación favorable
+        rec_mean = d.get('rec_mean')
+        num_an   = d.get('num_analistas', 0)
+        if rec_mean is None or rec_mean > 2.5:
+            continue
+        if num_an < 3:  # mínimo 3 analistas para fiabilidad
+            continue
+        elegibles.append(d)
+
+    # Ordenar por upside descendente
+    elegibles.sort(key=lambda x: x['upside'], reverse=True)
+    top_n = elegibles[:top]
+
+    salida = []
+    for i, d in enumerate(top_n, 1):
+        rec_texto = ""
+        if d.get('rec_mean'):
+            rm = d['rec_mean']
+            if rm <= 1.5: rec_label = "Comprar fuerte"
+            elif rm <= 2.0: rec_label = "Comprar"
+            elif rm <= 2.5: rec_label = "Comprar/Mantener"
+            else: rec_label = "Mantener"
+            rec_texto = f" | Consenso: {rec_label} ({rm:.2f}/5, {d.get('num_analistas',0)} analistas)"
+
+        linea = f"{i}. **{d['nombre']} ({d['ticker']})** | Precio: {d['precio']:.2f} {d['moneda']} | "
+        linea += f"Target: {d['target']:.2f} | Upside: 🟢 {d['upside']:+.1f}%{rec_texto}"
+        if d.get('pe_forward'):
+            linea += f" | P/E Fwd: {d['pe_forward']:.1f}x"
+
+        cambios = cambios_por_ticker.get(d['ticker'], [])
+        if cambios:
+            cambio_reciente = max(cambios, key=lambda c: c['fecha'])
+            detalle = f"\n   → 📢 Movimiento reciente: {cambio_reciente['firma']} ({cambio_reciente['fecha'].strftime('%d/%m/%Y')})"
+            if cambio_reciente['accion']:
+                detalle += f" — {cambio_reciente['accion']}"
+            if cambio_reciente['hasta']:
+                detalle += f" → {cambio_reciente['hasta']}"
+            linea += detalle
+        salida.append(linea)
+
+    return salida if salida else [f"Ninguna empresa Wide Moat cumple los criterios actuales (upside ≥{min_upside}%, consenso favorable, ≥3 analistas)."]
+
+
+# ═════════════════════════════════════════════
+# GEMINI — INFORME (6 secciones)
+# ═════════════════════════════════════════════
+def generar_informe(macro, cambios_analistas, fund_cartera_fmt, fund_watchlist_fmt, top_oportunidades):
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel("gemini-2.5-flash")
     fecha = datetime.now().strftime("%d/%m/%Y")
 
-    noticias_texto = ""
-    for empresa, arts in noticias_empresas.items():
-        noticias_texto += f"\n### {empresa}\n"
-        if arts:
-            for a in arts:
-                noticias_texto += f"  - {a}\n"
-        else:
-            noticias_texto += "  - (sin artículos recientes)\n"
-
     macro_texto       = "\n".join(macro[:30]) if macro else "Sin datos macro."
-    insiders_texto    = "\n".join(insiders)
-    earn_prox_texto   = "\n".join(earnings_proximos) if earnings_proximos else "Sin earnings en los próximos 30 días."
-    earn_rep_texto    = "\n".join(earnings_reportados) if earnings_reportados else "Ninguna empresa ha reportado en los últimos 7 días."
-    analistas_texto   = "\n".join(cambios_analistas) if cambios_analistas else "Sin cambios detectados."
-    fund_cart_texto   = "\n".join(fund_cartera) if fund_cartera else "Sin datos."
-    fund_watch_texto  = "\n".join(fund_watchlist) if fund_watchlist else "Sin datos."
+    analistas_texto   = "\n".join(cambios_analistas)
+    fund_cart_texto   = "\n".join(fund_cartera_fmt) if fund_cartera_fmt else "Sin datos."
+    fund_watch_texto  = "\n".join(fund_watchlist_fmt) if fund_watchlist_fmt else "Sin datos."
+    top_texto         = "\n".join(top_oportunidades)
 
     prompt = f"""
 Eres un analista de inversiones senior. Hoy es {fecha}.
-Genera un informe diario en ESPAÑOL, redactado de forma fluida y útil, orientado a la toma de decisiones.
+Genera un informe diario en ESPAÑOL.
 
 Cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
-S&P Global, Moody's, Bitcoin, MercadoLibre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
-Kraken Robotics, TransMedics, Berkshire Hathaway.
-Cartera ampliada: Waste Connections, McDonald's, American Express, AST SpaceMobile, Nvidia.
+S&P Global, Moody's, MercadoLibre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
+Kraken Robotics, TransMedics, Berkshire Hathaway. Cartera ampliada: Waste Connections,
+McDonald's, American Express, AST SpaceMobile, Nvidia.
 
-REGLAS:
-- Usa los artículos como fuente principal
-- Si no hay artículo específico puedes apoyarte en contexto sectorial conocido para 1 línea útil
-- NO inventes hechos concretos no presentes en los datos
-- Cada empresa debe tener al menos un comentario útil
-
-Genera EXACTAMENTE estas 8 secciones:
+Genera EXACTAMENTE estas 6 secciones:
 
 ## 1. RESUMEN MACRO
-Análisis sustancioso de tipos de interés (Fed/BCE), inflación, geopolítica, divisas, materias primas.
-Cada subtema con su nombre en negrita y análisis concreto. Termina con implicación para la cartera.
+Análisis sustancioso de tipos (Fed/BCE), inflación, geopolítica, divisas y materias primas.
+Cada subtema con su nombre en negrita y análisis concreto. Termina con implicaciones para la cartera.
 
-## 2. NOTICIAS POR EMPRESA
-Lista TODAS las empresas. Formato: **Nombre:** comentario.
-Resume con criterio inversor. Si no hay artículos pero conoces contexto: aporta una línea breve.
+## 2. SEÑALES A VIGILAR
+Riesgos y catalizadores reales basados en macro y contexto de la cartera. NUNCA "no hay nada".
 
-## 3. TRANSACCIONES DE INSIDERS (últimos 30 días)
-Lista las transacciones detectadas tal como vienen, agrupadas por empresa.
-Marca con 🟢 las compras claras y describe el contexto si es posible.
-Si la lista dice "Sin transacciones": refléjalo.
+## 3. CAMBIOS DE ANALISTAS (últimos 30 días)
+Reproduce la lista tal cual. Los grados YA están en español.
 
-## 4. SEÑALES A VIGILAR
-Identifica riesgos y catalizadores reales: earnings próximos, cambios de analistas relevantes, factores macro.
-NUNCA escribas "no hay nada que vigilar".
+## 4. DATOS FUNDAMENTALES — CARTERA
+Reproduce el bloque tal cual.
 
-## 5. CALENDARIO DE RESULTADOS
-**Próximos 30 días:** lista con fechas.
-**Reportados últimos 7 días:** lista con comentario si hay info en las noticias.
+## 5. DATOS FUNDAMENTALES — WATCHLIST (TOP 50 por upside)
+Reproduce el bloque tal cual.
 
-## 6. CAMBIOS DE ANALISTAS (últimos 15 días)
-Lista los cambios. Los grados YA están traducidos al español (Comprar, Mantener, Vender, Sobresperar, etc).
-Indica banco, empresa, acción y cambio.
-
-## 7. DATOS FUNDAMENTALES — CARTERA
-Reproduce el bloque FUNDAMENTALES CARTERA tal cual, uno por línea. Ya ordenados por upside.
-
-## 8. DATOS FUNDAMENTALES — WATCHLIST
-Reproduce el bloque FUNDAMENTALES WATCHLIST tal cual, uno por línea. Ya ordenados por upside.
-NO comentes estas empresas, solo los datos.
+## 6. TOP 10 OPORTUNIDADES WIDE MOAT (≥25% upside + consenso favorable)
+Reproduce el bloque tal cual, conservando numeración 1-10 y movimientos recientes.
 
 Sé directo. Sin relleno.
 
 === DATOS MACRO ===
 {macro_texto}
 
-=== NOTICIAS POR EMPRESA ===
-{noticias_texto}
-
-=== INSIDERS (30 días) ===
-{insiders_texto}
-
-=== EARNINGS PRÓXIMOS 30 DÍAS ===
-{earn_prox_texto}
-
-=== EARNINGS REPORTADOS ÚLTIMOS 7 DÍAS ===
-{earn_rep_texto}
-
-=== CAMBIOS ANALISTAS (15 días) ===
+=== CAMBIOS ANALISTAS (30 días) ===
 {analistas_texto}
 
 === FUNDAMENTALES CARTERA ===
 {fund_cart_texto}
 
-=== FUNDAMENTALES WATCHLIST ===
+=== FUNDAMENTALES WATCHLIST (TOP 50) ===
 {fund_watch_texto}
+
+=== TOP OPORTUNIDADES ===
+{top_texto}
 """
     response = model.generate_content(prompt)
     return response.text
@@ -659,33 +814,43 @@ def enviar_email(informe):
 # ═════════════════════════════════════════════
 def main():
     print(f"🔍 Iniciando agente — {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    print("🌍 Macro (fuentes financieras + Google News)...")
+
+    print("🌍 Macro...")
     macro = get_macro_data()
     print(f"   → {len(macro)} items")
-    print("📰 Noticias por empresa...")
-    noticias = get_noticias_empresas()
-    con_n = sum(1 for v in noticias.values() if v)
-    total_n = sum(len(v) for v in noticias.values())
-    print(f"   → {con_n}/{len(noticias)} empresas ({total_n} artículos)")
-    print("📋 Insiders 30 días...")
-    insiders = get_insiders()
-    print(f"   → {len(insiders)} registros")
-    print("📅 Earnings (calendar + earnings_dates + scraping Yahoo)...")
-    earnings_prox, earnings_rep = get_earnings_calendario()
-    print(f"   → {len(earnings_prox)} próximos / {len(earnings_rep)} reportados")
-    print("🎯 Cambios de analistas (yfinance)...")
-    cambios = get_cambios_analistas()
-    print(f"   → {len(cambios)} cambios")
-    print("📊 Fundamentales cartera...")
-    fund_cartera = get_fundamentales_cartera()
-    print(f"   → {len(fund_cartera)} empresas")
-    print("📈 Fundamentales watchlist...")
-    fund_watchlist = get_fundamentales_watchlist()
-    print(f"   → {len(fund_watchlist)} empresas")
+
+    # Preparar todos los tickers
+    tickers_cartera = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
+
+    print("⏳ Descargando datos de yfinance (cartera + watchlist en paralelo)...")
+    datos = descargar_todos_los_datos(tickers_cartera, WATCHLIST)
+    print(f"   → {len(datos)} tickers procesados")
+
+    print("🎯 Procesando cambios de analistas...")
+    cambios_dict = procesar_cambios_analistas(datos)
+    cambios_fmt  = formatear_cambios_para_seccion(cambios_dict, solo_cartera_tickers=set(tickers_cartera.keys()))
+    print(f"   → {sum(len(v) for v in cambios_dict.values())} cambios totales")
+
+    print("📊 Procesando fundamentales cartera...")
+    datos_cartera = procesar_fundamentales(datos, set(tickers_cartera.keys()))
+    fund_cartera_fmt = formatear_seccion_fundamentales(datos_cartera)
+    print(f"   → {len(datos_cartera)} empresas")
+
+    print("📈 Procesando fundamentales watchlist...")
+    datos_watchlist = procesar_fundamentales(datos, set(WATCHLIST.keys()))
+    fund_watchlist_fmt = formatear_seccion_fundamentales(datos_watchlist, top_n=50)
+    print(f"   → {len(datos_watchlist)} empresas procesadas (top 50 mostradas)")
+
+    print("🏆 Top 10 oportunidades Wide Moat (≥25% upside)...")
+    top = get_top_oportunidades(datos_cartera, datos_watchlist, cambios_dict, top=10, min_upside=25)
+    print(f"   → {len(top)} oportunidades identificadas")
+
     print("🤖 Generando informe con Gemini...")
-    informe = generar_informe(macro, noticias, insiders, earnings_prox, earnings_rep, cambios, fund_cartera, fund_watchlist)
+    informe = generar_informe(macro, cambios_fmt, fund_cartera_fmt, fund_watchlist_fmt, top)
+
     print("📧 Enviando email...")
     enviar_email(informe)
+
     print("✅ Completado.")
 
 
