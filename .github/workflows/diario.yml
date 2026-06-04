@@ -2,7 +2,7 @@ name: Agente Bolsa Diario
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '26 8 * * *'
   workflow_dispatch:
 
 jobs:
