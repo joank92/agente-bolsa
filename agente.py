@@ -29,17 +29,18 @@ EMPRESAS_USA = {
     "V": "Visa", "MA": "Mastercard", "SPGI": "S&P Global", "MCO": "Moody's",
     "MELI": "Mercado Libre", "BKNG": "Booking Holdings", "CPRT": "Copart",
     "TMDX": "TransMedics",
+    "UBER": "Uber", "NFLX": "Netflix", "MBGL": "Mobility Global",
 }
 EMPRESAS_INTL = {
     "CSU.TO":  ("Constellation Software", "CA"),
     "PNG.V":   ("Kraken Robotics", "CA"),
+    "TOI.V":   ("Topicus.com", "CA"),
     "AIR.PA":  ("Airbus", "FR"),
     "7974.T":  ("Nintendo", "JP"),
     "DNP.WA":  ("Dino Polska", "PL"),
 }
 
-# Sobrescribir WATCHLIST con la lista específica del usuario
-# Punto 5: solo estas empresas (cartera + watchlist seleccionada)
+# WATCHLIST del usuario (cartera + selección adicional)
 WATCHLIST_USUARIO = {
     # — Cartera (replicada para que aparezca también en watchlist) —
     "MSFT":   "Microsoft",
@@ -47,6 +48,7 @@ WATCHLIST_USUARIO = {
     "AMZN":   "Amazon",
     "GOOGL":  "Alphabet",
     "CSU.TO": "Constellation Software",
+    "TOI.V":  "Topicus.com",
     "MA":     "Mastercard",
     "V":      "Visa",
     "SPGI":   "S&P Global",
@@ -59,6 +61,9 @@ WATCHLIST_USUARIO = {
     "7974.T": "Nintendo",
     "PNG.V":  "Kraken Robotics",
     "TMDX":   "TransMedics",
+    "UBER":   "Uber",
+    "NFLX":   "Netflix",
+    "MBGL":   "Mobility Global",
     # — Watchlist específica —
     "AXP":    "American Express",
     "ASTS":   "AST SpaceMobile",
@@ -68,11 +73,9 @@ WATCHLIST_USUARIO = {
     "ROL":    "Rollins",
     "MSCI":   "MSCI",
     "BRK-B":  "Berkshire Hathaway",
-    "TOI.V":  "Topicus.com",
     "BABA":   "Alibaba",
     "0700.HK":"Tencent",
     "TDG":    "TransDigm",
-    "NFLX":   "Netflix",
     "SAP":    "SAP",
     "FICO":   "Fair Isaac",
     "TSM":    "Taiwan Semi",
@@ -98,13 +101,9 @@ WATCHLIST_USUARIO = {
     "NOW":    "ServiceNow",
     "YUMC":   "Yum China",
     "RMS.PA": "Hermès",
-    "UBER":   "Uber",
 }
 
-# Reemplazar la WATCHLIST (eliminar la lista enorme de Wide Moat)
 WATCHLIST = WATCHLIST_USUARIO
-
-# Set de tickers para el punto 6 (todas las del usuario son candidatas)
 TICKERS_WIDE_MOAT = set(WATCHLIST_USUARIO.keys())
 
 DOMINIOS_FIN = "bloomberg.com,reuters.com,ft.com,wsj.com,cnbc.com,seekingalpha.com,marketwatch.com,barrons.com,economist.com,investors.com,fool.com"
@@ -191,12 +190,8 @@ def get_macro_data():
 # DESCARGA EN PARALELO DE DATOS YFINANCE
 # ═════════════════════════════════════════════
 def descargar_datos_ticker(ticker_nombre):
-    """Descarga info + upgrades_downgrades de un ticker. Devuelve dict."""
     ticker, nombre = ticker_nombre
-    resultado = {
-        "ticker": ticker, "nombre": nombre,
-        "info": None, "upgrades": None, "error": None
-    }
+    resultado = {"ticker": ticker, "nombre": nombre, "info": None, "upgrades": None, "error": None}
     try:
         stock = yf.Ticker(ticker)
         resultado["info"] = stock.info
@@ -210,7 +205,6 @@ def descargar_datos_ticker(ticker_nombre):
 
 
 def descargar_todos_los_datos(tickers_cartera, tickers_watchlist):
-    """Descarga datos en paralelo para todos los tickers."""
     lista = []
     for t, n in tickers_cartera.items():
         lista.append((t, n))
@@ -264,35 +258,26 @@ def procesar_cambios_analistas(datos_descargados):
 
 
 def emoji_cambio(accion_raw):
-    """Devuelve flechita según la acción original."""
     a = str(accion_raw).lower().strip()
-    if "up" in a or "upgr" in a:
-        return "⬆️"
-    if "down" in a or "downgr" in a:
-        return "⬇️"
-    if "main" in a or "reit" in a:
-        return "➖"
-    if "init" in a:
-        return "🆕"
+    if "up" in a or "upgr" in a: return "⬆️"
+    if "down" in a or "downgr" in a: return "⬇️"
+    if "main" in a or "reit" in a: return "➖"
+    if "init" in a: return "🆕"
     return ""
 
 
 def formatear_cambios_para_seccion(cambios_por_ticker, datos_descargados, solo_cartera_tickers=None):
-    """Agrupa los cambios por empresa, todas las recomendaciones de cada empresa juntas."""
     lineas = []
-    # Filtrar tickers que aplican y ordenar empresas alfabéticamente
     tickers_validos = []
     for ticker in cambios_por_ticker.keys():
         if solo_cartera_tickers and ticker not in solo_cartera_tickers:
             continue
         tickers_validos.append(ticker)
-    # Ordenar empresas por nombre
     tickers_validos.sort(key=lambda t: cambios_por_ticker[t][0]["nombre"])
 
     for ticker in tickers_validos:
         cambios = cambios_por_ticker[ticker]
         nombre = cambios[0]["nombre"]
-        # Target consenso de la empresa
         target_consenso = ""
         if ticker in datos_descargados and datos_descargados[ticker].get("info"):
             tgt = datos_descargados[ticker]["info"].get("targetMeanPrice")
@@ -302,10 +287,8 @@ def formatear_cambios_para_seccion(cambios_por_ticker, datos_descargados, solo_c
                 except Exception:
                     pass
 
-        # Cabecera por empresa
         lineas.append(f"\n### {nombre} ({ticker}){target_consenso}")
 
-        # Ordenar cambios de la empresa por fecha más reciente primero
         cambios_ord = sorted(cambios, key=lambda c: c["fecha"], reverse=True)
         for c in cambios_ord:
             flecha = emoji_cambio(c.get("accion_raw", c.get("accion", "")))
@@ -327,7 +310,6 @@ def formatear_cambios_para_seccion(cambios_por_ticker, datos_descargados, solo_c
 # 4 y 5. FUNDAMENTALES
 # ═════════════════════════════════════════════
 def procesar_fundamentales(datos_descargados, tickers_filtro):
-    """Devuelve lista de dicts con todos los datos solo para tickers del filtro."""
     resultados = []
     for ticker, d in datos_descargados.items():
         if ticker not in tickers_filtro:
@@ -341,7 +323,7 @@ def procesar_fundamentales(datos_descargados, tickers_filtro):
             pe_forward    = info.get("forwardPE")
             precio_target = info.get("targetMeanPrice")
             moneda        = info.get("currency", "USD")
-            rec_mean      = info.get("recommendationMean")  # 1=Strong Buy, 5=Strong Sell
+            rec_mean      = info.get("recommendationMean")
             num_analistas = info.get("numberOfAnalystOpinions") or 0
 
             if not precio:
@@ -361,13 +343,9 @@ def procesar_fundamentales(datos_descargados, tickers_filtro):
 
 
 def _f(v):
-    """Convierte un valor a float si es posible, sino None."""
-    if v is None:
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+    if v is None: return None
+    try: return float(v)
+    except (TypeError, ValueError): return None
 
 
 def formatear_linea_fundamental(d):
@@ -379,12 +357,9 @@ def formatear_linea_fundamental(d):
     moneda    = d.get('moneda', 'USD')
 
     linea = f"**{d['nombre']} ({d['ticker']})** | Precio: {precio:.2f} {moneda}" if precio else f"**{d['nombre']} ({d['ticker']})**"
-    if pe_actual:
-        linea += f" | P/E: {pe_actual:.1f}x"
-    if pe_fwd:
-        linea += f" | P/E Fwd: {pe_fwd:.1f}x"
-    if target:
-        linea += f" | Target: {target:.2f}"
+    if pe_actual: linea += f" | P/E: {pe_actual:.1f}x"
+    if pe_fwd: linea += f" | P/E Fwd: {pe_fwd:.1f}x"
+    if target: linea += f" | Target: {target:.2f}"
     if upside is not None:
         emoji = "🟢" if upside > 0 else "🔴"
         linea += f" | Upside: {emoji} {upside:+.1f}%"
@@ -399,17 +374,9 @@ def formatear_seccion_fundamentales(datos, top_n=None):
 
 
 # ═════════════════════════════════════════════
-# 6. TOP 10 OPORTUNIDADES (Wide Moat + ≥25% upside + rec favorable)
+# 6. TOP 10 OPORTUNIDADES
 # ═════════════════════════════════════════════
 def get_top_oportunidades(datos_cartera, datos_watchlist, cambios_por_ticker, top=10, min_upside=25):
-    """
-    Filtros:
-    - Ticker debe estar en TICKERS_WIDE_MOAT
-    - upside >= min_upside
-    - recommendationMean <= 2.5 (consenso favorable, sin Sells significativos)
-    - número mínimo de analistas: 3 para que sea fiable
-    """
-    # Combinar deduplicando por ticker (cartera tiene prioridad)
     vistos = set()
     todos = []
     for d in datos_cartera + datos_watchlist:
@@ -441,7 +408,6 @@ def get_top_oportunidades(datos_cartera, datos_watchlist, cambios_por_ticker, to
         precio = _f(d.get('precio')) or 0
         target = _f(d.get('target')) or 0
         upside = _f(d.get('upside')) or 0
-        pe_fwd = _f(d.get('pe_forward'))
         rm     = _f(d.get('rec_mean'))
         moneda = d.get('moneda', 'USD')
 
@@ -471,7 +437,7 @@ def get_top_oportunidades(datos_cartera, datos_watchlist, cambios_por_ticker, to
 
 
 # ═════════════════════════════════════════════
-# GEMINI — INFORME (6 secciones)
+# GEMINI — INFORME
 # ═════════════════════════════════════════════
 def generar_informe(macro, cambios_analistas, fund_cartera_fmt, fund_watchlist_fmt, top_oportunidades):
     genai.configure(api_key=GEMINI_API_KEY)
@@ -488,10 +454,9 @@ def generar_informe(macro, cambios_analistas, fund_cartera_fmt, fund_watchlist_f
 Eres un analista de inversiones senior. Hoy es {fecha}.
 Genera un informe diario en ESPAÑOL.
 
-Cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Visa, Mastercard,
-S&P Global, Moody's, MercadoLibre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
-Kraken Robotics, TransMedics, Berkshire Hathaway. Cartera ampliada: Waste Connections,
-McDonald's, American Express, AST SpaceMobile, Nvidia.
+Cartera: Microsoft, Meta, Amazon, Alphabet, Constellation Software, Topicus, Visa, Mastercard,
+S&P Global, Moody's, Mercado Libre, Booking Holdings, Copart, Dino Polska, Airbus, Nintendo,
+Kraken Robotics, TransMedics, Uber, Netflix, Mobility Global.
 
 Genera EXACTAMENTE estas 6 secciones:
 
@@ -590,10 +555,9 @@ def main():
     macro = get_macro_data()
     print(f"   → {len(macro)} items")
 
-    # Preparar todos los tickers
     tickers_cartera = {**EMPRESAS_USA, **{t: v[0] for t, v in EMPRESAS_INTL.items()}}
 
-    print("⏳ Descargando datos de yfinance (cartera + watchlist en paralelo)...")
+    print("⏳ Descargando datos de yfinance...")
     datos = descargar_todos_los_datos(tickers_cartera, WATCHLIST)
     print(f"   → {len(datos)} tickers procesados")
 
